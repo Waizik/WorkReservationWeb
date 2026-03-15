@@ -1,6 +1,7 @@
 @page "/admin"
 @attribute [Authorize(Roles = "admin")]
 @inject WorkReservationWeb.Web.Services.ReservationAdminApiClient AdminApiClient
+@inject WorkReservationWeb.Web.Services.ReservationPublicApiClient PublicApiClient
 @using WorkReservationWeb.Shared.Contracts
 
 <PageTitle>Admin</PageTitle>
@@ -17,6 +18,25 @@
 <section class="mb-5">
 	<h2 class="h4">Create Or Update Service Offer</h2>
 
+	@if (!string.IsNullOrWhiteSpace(serviceOffersErrorMessage))
+	{
+		<p class="text-danger">@serviceOffersErrorMessage</p>
+	}
+
+	@if (serviceOffers.Count > 0)
+	{
+		<div class="mb-3">
+			<label for="existingServiceOffer" class="form-label">Existing service offer</label>
+			<select id="existingServiceOffer" class="form-select" @bind="selectedServiceOfferId" @bind:after="OnSelectedServiceOfferChangedAsync">
+				<option value="">Create new service offer</option>
+				@foreach (var serviceOffer in serviceOffers)
+				{
+					<option value="@serviceOffer.Id">@serviceOffer.Title (@(serviceOffer.Active ? "Active" : "Inactive"))</option>
+				}
+			</select>
+		</div>
+	}
+
 	<div class="mb-3">
 		<label for="serviceTitle" class="form-label">Title</label>
 		<input id="serviceTitle" class="form-control" @bind="serviceTitle" />
@@ -32,12 +52,21 @@
 		<input id="serviceBasePrice" type="number" step="0.01" class="form-control" @bind="serviceBasePrice" />
 	</div>
 
+	<div class="mb-3">
+		<label for="serviceImageUrls" class="form-label">Image URLs</label>
+		<textarea id="serviceImageUrls" class="form-control" rows="4" @bind="serviceImageUrlsText"></textarea>
+		<div class="form-text">Enter one image URL per line.</div>
+	</div>
+
 	<div class="form-check mb-3">
 		<input id="serviceActive" type="checkbox" class="form-check-input" @bind="serviceActive" />
 		<label for="serviceActive" class="form-check-label">Active</label>
 	</div>
 
-	<button class="btn btn-primary" @onclick="SaveServiceOfferAsync" disabled="@isSavingServiceOffer">Save service offer</button>
+	<div class="d-flex gap-2">
+		<button class="btn btn-primary" @onclick="SaveServiceOfferAsync" disabled="@isSavingServiceOffer">Save service offer</button>
+		<button class="btn btn-outline-secondary" @onclick="ResetServiceOfferForm">Clear form</button>
+	</div>
 
 	@if (!string.IsNullOrWhiteSpace(serviceOfferMessage))
 	{
@@ -54,6 +83,50 @@
 				<p class="mb-0"><strong>Status:</strong> @(lastSavedServiceOffer.Active ? "Active" : "Inactive")</p>
 			</div>
 		</div>
+	}
+</section>
+
+<section class="mb-5">
+	<div class="d-flex justify-content-between align-items-center mb-3">
+		<h2 class="h4 mb-0">Service Offers</h2>
+		<button class="btn btn-outline-secondary" @onclick="LoadServiceOffersAsync" disabled="@isLoadingServiceOffers">Refresh</button>
+	</div>
+
+	@if (isLoadingServiceOffers)
+	{
+		<p>Loading service offers...</p>
+	}
+	else if (serviceOffers.Count == 0)
+	{
+		<p>No service offers found.</p>
+	}
+	else
+	{
+		<table class="table table-striped">
+			<thead>
+				<tr>
+					<th>Title</th>
+					<th>Price</th>
+					<th>Status</th>
+					<th>Images</th>
+					<th></th>
+				</tr>
+			</thead>
+			<tbody>
+				@foreach (var serviceOffer in serviceOffers)
+				{
+					<tr>
+						<td>@serviceOffer.Title</td>
+						<td>@serviceOffer.BasePrice.ToString("0.00")</td>
+						<td>@(serviceOffer.Active ? "Active" : "Inactive")</td>
+						<td>@serviceOffer.ImageUrls.Count</td>
+						<td>
+							<button class="btn btn-sm btn-outline-primary" @onclick="() => EditServiceOffer(serviceOffer)">Edit</button>
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
 	}
 </section>
 
@@ -107,23 +180,63 @@
 
 @code {
 	private readonly List<ReservationSummaryDto> reservations = [];
+	private readonly List<ServiceOfferDto> serviceOffers = [];
 
 	private bool isLoadingReservations = true;
+	private bool isLoadingServiceOffers = true;
 	private bool isSavingServiceOffer;
 	private string? reservationsErrorMessage;
+	private string? serviceOffersErrorMessage;
 	private string? serviceOfferMessage;
 	private string serviceOfferMessageClass = "text-success";
 
+	private string selectedServiceOfferId = string.Empty;
 	private string serviceTitle = string.Empty;
 	private string serviceDescription = string.Empty;
 	private decimal serviceBasePrice;
+	private string serviceImageUrlsText = string.Empty;
 	private bool serviceActive = true;
 
 	private ServiceOfferDto? lastSavedServiceOffer;
 
 	protected override async Task OnInitializedAsync()
 	{
+		await LoadServiceOffersAsync();
 		await LoadReservationsAsync();
+	}
+
+	private async Task LoadServiceOffersAsync()
+	{
+		isLoadingServiceOffers = true;
+		serviceOffersErrorMessage = null;
+
+		try
+		{
+			var loadedServiceOffers = await PublicApiClient.GetServicesAsync(CancellationToken.None);
+			serviceOffers.Clear();
+			serviceOffers.AddRange(loadedServiceOffers.OrderBy(serviceOffer => serviceOffer.Title, StringComparer.OrdinalIgnoreCase));
+
+			if (!string.IsNullOrWhiteSpace(selectedServiceOfferId))
+			{
+				var selectedServiceOffer = serviceOffers.FirstOrDefault(serviceOffer => serviceOffer.Id == selectedServiceOfferId);
+				if (selectedServiceOffer is null)
+				{
+					ResetServiceOfferForm();
+				}
+				else
+				{
+					PopulateServiceOfferForm(selectedServiceOffer);
+				}
+			}
+		}
+		catch
+		{
+			serviceOffersErrorMessage = "Failed to load service offers.";
+		}
+		finally
+		{
+			isLoadingServiceOffers = false;
+		}
 	}
 
 	private async Task LoadReservationsAsync()
@@ -163,14 +276,21 @@
 		try
 		{
 			var request = new UpsertServiceOfferRequestDto(
-				null,
+				string.IsNullOrWhiteSpace(selectedServiceOfferId) ? null : selectedServiceOfferId,
 				serviceTitle,
 				serviceDescription,
 				serviceBasePrice,
-				null,
+				ParseImageUrls(),
 				serviceActive);
 
 			lastSavedServiceOffer = await AdminApiClient.UpsertServiceOfferAsync(request, CancellationToken.None);
+			if (lastSavedServiceOffer is not null)
+			{
+				selectedServiceOfferId = lastSavedServiceOffer.Id;
+				PopulateServiceOfferForm(lastSavedServiceOffer);
+			}
+
+			await LoadServiceOffersAsync();
 			serviceOfferMessageClass = "text-success";
 			serviceOfferMessage = lastSavedServiceOffer is null
 				? "Service offer request completed with no payload."
@@ -185,5 +305,53 @@
 		{
 			isSavingServiceOffer = false;
 		}
+	}
+
+	private async Task OnSelectedServiceOfferChangedAsync()
+	{
+		var selectedServiceOffer = serviceOffers.FirstOrDefault(serviceOffer => serviceOffer.Id == selectedServiceOfferId);
+		if (selectedServiceOffer is null)
+		{
+			ResetServiceOfferForm();
+			return;
+		}
+
+		PopulateServiceOfferForm(selectedServiceOffer);
+		await Task.CompletedTask;
+	}
+
+	private void EditServiceOffer(ServiceOfferDto serviceOffer)
+	{
+		selectedServiceOfferId = serviceOffer.Id;
+		PopulateServiceOfferForm(serviceOffer);
+	}
+
+	private void PopulateServiceOfferForm(ServiceOfferDto serviceOffer)
+	{
+		selectedServiceOfferId = serviceOffer.Id;
+		serviceTitle = serviceOffer.Title;
+		serviceDescription = serviceOffer.Description;
+		serviceBasePrice = serviceOffer.BasePrice;
+		serviceImageUrlsText = string.Join(Environment.NewLine, serviceOffer.ImageUrls);
+		serviceActive = serviceOffer.Active;
+	}
+
+	private void ResetServiceOfferForm()
+	{
+		selectedServiceOfferId = string.Empty;
+		serviceTitle = string.Empty;
+		serviceDescription = string.Empty;
+		serviceBasePrice = 0;
+		serviceImageUrlsText = string.Empty;
+		serviceActive = true;
+	}
+
+	private IReadOnlyList<string> ParseImageUrls()
+	{
+		return serviceImageUrlsText
+			.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.Where(static url => !string.IsNullOrWhiteSpace(url))
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToArray();
 	}
 }
