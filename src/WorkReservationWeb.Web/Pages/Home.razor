@@ -1,0 +1,184 @@
+﻿@page "/"
+@inject WorkReservationWeb.Web.Services.ReservationPublicApiClient ApiClient
+@using WorkReservationWeb.Shared.Contracts
+
+<PageTitle>Book Reservation</PageTitle>
+
+<h1>Book a Reservation</h1>
+
+@if (isLoading)
+{
+	<p>Loading services...</p>
+}
+else if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+	<p class="text-danger">@errorMessage</p>
+}
+else
+{
+	<div class="mb-3">
+		<label for="service" class="form-label">Service</label>
+		<select id="service" class="form-select" @bind="selectedServiceId" @bind:after="OnServiceChanged">
+			@foreach (var service in services)
+			{
+				<option value="@service.Id">@service.Title (@service.BasePrice.ToString("0.00"))</option>
+			}
+		</select>
+	</div>
+
+	@if (slots.Count == 0)
+	{
+		<p>No available slots for this service.</p>
+	}
+	else
+	{
+		<div class="mb-3">
+			<label for="slot" class="form-label">Available slot</label>
+			<select id="slot" class="form-select" @bind="selectedSlotId">
+				@foreach (var slot in slots)
+				{
+					<option value="@slot.Id">
+						@slot.StartUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm") - @slot.EndUtc.LocalDateTime.ToString("HH:mm")
+						(@slot.ReservedCount/@slot.Capacity booked)
+					</option>
+				}
+			</select>
+		</div>
+	}
+
+	<div class="mb-3">
+		<label for="customerName" class="form-label">Name</label>
+		<input id="customerName" class="form-control" @bind="customerName" />
+	</div>
+
+	<div class="mb-3">
+		<label for="customerEmail" class="form-label">Email</label>
+		<input id="customerEmail" class="form-control" @bind="customerEmail" />
+	</div>
+
+	<div class="mb-3">
+		<label for="note" class="form-label">Note (optional)</label>
+		<textarea id="note" class="form-control" @bind="note"></textarea>
+	</div>
+
+	<button class="btn btn-primary" @onclick="SubmitAsync" disabled="@isSubmitting">Book now</button>
+
+	@if (!string.IsNullOrWhiteSpace(resultMessage))
+	{
+		<p class="mt-3 @resultClass">@resultMessage</p>
+	}
+}
+
+@code {
+	private readonly List<ServiceOfferDto> services = [];
+	private readonly List<ReservationSlotDto> slots = [];
+
+	private bool isLoading = true;
+	private bool isSubmitting;
+	private string? errorMessage;
+	private string? resultMessage;
+	private string resultClass = "text-success";
+
+	private string selectedServiceId = string.Empty;
+	private string selectedSlotId = string.Empty;
+
+	private string customerName = string.Empty;
+	private string customerEmail = string.Empty;
+	private string? note;
+
+	protected override async Task OnInitializedAsync()
+	{
+		try
+		{
+			var loadedServices = await ApiClient.GetServicesAsync(CancellationToken.None);
+			services.AddRange(loadedServices);
+
+			if (services.Count > 0)
+			{
+				selectedServiceId = services[0].Id;
+				await LoadSlotsAsync();
+			}
+			else
+			{
+				errorMessage = "No active services are available.";
+			}
+		}
+		catch
+		{
+			errorMessage = "Failed to load reservation data.";
+		}
+		finally
+		{
+			isLoading = false;
+		}
+	}
+
+	private async Task OnServiceChanged()
+	{
+		await LoadSlotsAsync();
+	}
+
+	private async Task LoadSlotsAsync()
+	{
+		slots.Clear();
+
+		if (string.IsNullOrWhiteSpace(selectedServiceId))
+		{
+			return;
+		}
+
+		var loadedSlots = await ApiClient.GetSlotsAsync(selectedServiceId, CancellationToken.None);
+		slots.AddRange(loadedSlots);
+		selectedSlotId = slots.FirstOrDefault()?.Id ?? string.Empty;
+	}
+
+	private async Task SubmitAsync()
+	{
+		resultMessage = null;
+
+		if (string.IsNullOrWhiteSpace(customerName) || string.IsNullOrWhiteSpace(customerEmail))
+		{
+			resultClass = "text-danger";
+			resultMessage = "Name and email are required.";
+			return;
+		}
+
+		var selectedSlot = slots.FirstOrDefault(x => x.Id == selectedSlotId);
+		if (selectedSlot is null)
+		{
+			resultClass = "text-danger";
+			resultMessage = "Please select an available slot.";
+			return;
+		}
+
+		isSubmitting = true;
+
+		try
+		{
+			var request = new CreateReservationRequestDto(
+				selectedServiceId,
+				selectedSlot.Id,
+				selectedSlot.Etag,
+				customerName,
+				customerEmail,
+				note);
+
+			var result = await ApiClient.CreateReservationAsync(request, CancellationToken.None);
+			if (result is null)
+			{
+				resultClass = "text-danger";
+				resultMessage = "Booking failed unexpectedly.";
+				return;
+			}
+
+			resultClass = result.Success ? "text-success" : "text-danger";
+			resultMessage = result.Message;
+
+			await LoadSlotsAsync();
+		}
+		finally
+		{
+			isSubmitting = false;
+		}
+	}
+}

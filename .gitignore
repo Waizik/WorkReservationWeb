@@ -41,6 +41,10 @@ ScaffoldingReadMe.txt
 *~
 CodeCoverage/
 
+# Generated web assets
+src/WorkReservationWeb.Web/wwwroot/lib/
+src/WorkReservationWeb.Web/wwwroot/**/*.map
+
 # MSBuild Binary and Structured Log
 *.binlog
 
