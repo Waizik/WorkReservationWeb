@@ -14,6 +14,32 @@ namespace WorkReservationWeb.Integration.Tests;
 public class ReservationFlowIntegrationTests
 {
     [Fact]
+    public async Task AdminReservations_WithoutAdminRole_ReturnsUnauthorized()
+    {
+        var service = new InMemoryReservationPlatformService();
+        var serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var serviceProvider = new ServiceCollection()
+            .AddOptions()
+            .AddSingleton(serializerOptions)
+            .Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer(serializerOptions))
+            .BuildServiceProvider();
+        var functionContext = new TestFunctionContext(serviceProvider);
+        var getReservationsFunction = new GetReservationsFunction(service);
+
+        var request = new TestHttpRequestData(
+            functionContext,
+            "GET",
+            new Uri("https://localhost/api/admin/reservations"));
+        request.Headers.Add("x-ms-client-principal", TestStaticWebAppsPrincipalFactory.CreateHeaderValue("authenticated"));
+
+        var response = await getReservationsFunction.Run(request, CancellationToken.None);
+        var error = await DeserializeResponseAsync<ApiErrorDto>(response, serializerOptions);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("unauthorized", error.Code);
+    }
+
+    [Fact]
     public async Task ReservationFlow_EndToEnd_CreatesReservationAndShowsItInAdminList()
     {
         var service = new InMemoryReservationPlatformService();
@@ -77,7 +103,7 @@ public class ReservationFlowIntegrationTests
             functionContext,
             "GET",
             new Uri("https://localhost/api/admin/reservations"));
-        getReservationsRequest.Headers.Add("x-ms-client-principal", "test-principal");
+        getReservationsRequest.Headers.Add("x-ms-client-principal", TestStaticWebAppsPrincipalFactory.CreateHeaderValue("authenticated", "admin"));
 
         var reservationsResponse = await getReservationsFunction.Run(getReservationsRequest, CancellationToken.None);
         var reservations = await DeserializeResponseAsync<List<ReservationSummaryDto>>(reservationsResponse, serializerOptions);

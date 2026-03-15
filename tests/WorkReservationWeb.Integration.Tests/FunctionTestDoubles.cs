@@ -1,6 +1,8 @@
 using System.Collections;
-using System.Security.Claims;
 using System.Net;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -151,5 +153,22 @@ internal sealed class TestHttpCookies : HttpCookies
     public override IHttpCookie CreateNew()
     {
         return new HttpCookie(string.Empty, string.Empty);
+    }
+}
+
+internal static class TestStaticWebAppsPrincipalFactory
+{
+    public static string CreateHeaderValue(params string[] roles)
+    {
+        var principal = new
+        {
+            identityProvider = "aad",
+            userId = "test-user-id",
+            userDetails = "test@example.com",
+            userRoles = roles
+        };
+
+        var json = JsonSerializer.Serialize(principal);
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
     }
 }
