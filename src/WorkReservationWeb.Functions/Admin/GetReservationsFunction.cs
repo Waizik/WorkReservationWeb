@@ -10,7 +10,7 @@ public sealed class GetReservationsFunction(IReservationPlatformService reservat
 {
     [Function("AdminGetReservations")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "admin/reservations")] HttpRequestData request,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "management/reservations")] HttpRequestData request,
         CancellationToken cancellationToken)
     {
         if (!AdminAuthorization.IsAuthorized(request))

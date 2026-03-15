@@ -12,7 +12,7 @@ public sealed class ReservationAdminApiClient(HttpClient httpClient, IConfigurat
 
     public async Task<IReadOnlyList<ReservationSummaryDto>> GetReservationsAsync(CancellationToken cancellationToken)
     {
-        using var request = await CreateRequestAsync(HttpMethod.Get, "api/admin/reservations", cancellationToken);
+        using var request = await CreateRequestAsync(HttpMethod.Get, "api/management/reservations", cancellationToken);
         using var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -22,7 +22,7 @@ public sealed class ReservationAdminApiClient(HttpClient httpClient, IConfigurat
 
     public async Task<ServiceOfferDto?> UpsertServiceOfferAsync(UpsertServiceOfferRequestDto requestDto, CancellationToken cancellationToken)
     {
-        using var request = await CreateRequestAsync(HttpMethod.Post, "api/admin/services", cancellationToken);
+        using var request = await CreateRequestAsync(HttpMethod.Post, "api/management/services", cancellationToken);
         request.Content = JsonContent.Create(requestDto);
 
         using var response = await httpClient.SendAsync(request, cancellationToken);

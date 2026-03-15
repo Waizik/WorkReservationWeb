@@ -29,7 +29,7 @@ public class ReservationFlowIntegrationTests
         var request = new TestHttpRequestData(
             functionContext,
             "GET",
-            new Uri("https://localhost/api/admin/reservations"));
+            new Uri("https://localhost/api/management/reservations"));
         request.Headers.Add("x-ms-client-principal", TestStaticWebAppsPrincipalFactory.CreateHeaderValue("authenticated"));
 
         var response = await getReservationsFunction.Run(request, CancellationToken.None);
@@ -102,7 +102,7 @@ public class ReservationFlowIntegrationTests
         var getReservationsRequest = new TestHttpRequestData(
             functionContext,
             "GET",
-            new Uri("https://localhost/api/admin/reservations"));
+            new Uri("https://localhost/api/management/reservations"));
         getReservationsRequest.Headers.Add("x-ms-client-principal", TestStaticWebAppsPrincipalFactory.CreateHeaderValue("authenticated", "admin"));
 
         var reservationsResponse = await getReservationsFunction.Run(getReservationsRequest, CancellationToken.None);

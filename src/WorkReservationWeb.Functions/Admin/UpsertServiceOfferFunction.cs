@@ -10,7 +10,7 @@ public sealed class UpsertServiceOfferFunction(IReservationPlatformService reser
 {
     [Function("AdminUpsertServiceOffer")]
     public async Task<HttpResponseData> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "admin/services")] HttpRequestData request,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "management/services")] HttpRequestData request,
         CancellationToken cancellationToken)
     {
         if (!AdminAuthorization.IsAuthorized(request))

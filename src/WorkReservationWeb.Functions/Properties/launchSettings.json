@@ -2,7 +2,7 @@
   "profiles": {
     "WorkReservationWeb.Functions": {
       "commandName": "Project",
-      "commandLineArgs": "--port 7277",
+      "commandLineArgs": "--port 7287",
       "launchBrowser": false
     }
   }

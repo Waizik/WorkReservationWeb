@@ -39,8 +39,8 @@ Public:
 
 Admin (requires SWA principal header in this skeleton):
 
-- GET /api/admin/reservations
-- POST /api/admin/services
+- GET /api/management/reservations
+- POST /api/management/services
 
 Admin endpoints now require an `x-ms-client-principal` header containing a valid Azure Static Web Apps client principal with the `admin` role.
 
@@ -82,7 +82,7 @@ Run the Blazor WebAssembly app:
 dotnet run --project src/WorkReservationWeb.Web/WorkReservationWeb.Web.csproj
 ```
 
-For local development, the standalone Blazor app is configured to call the Functions host at `http://localhost:7277`.
+For local development, the standalone Blazor app is configured to call the Functions host at `http://localhost:7287`.
 The development web config also includes a local admin principal header so the `/admin` page can call the admin endpoints without Azure Static Web Apps in front of the Functions host.
 
 The home page now calls the public reservation API routes:
@@ -97,8 +97,9 @@ Run Azure Functions locally:
 dotnet run --project src/WorkReservationWeb.Functions/WorkReservationWeb.Functions.csproj
 ```
 
-When both projects are running locally, open the web app at `http://localhost:5273` or `https://localhost:7095` and the booking page will call the Functions API on port `7277`.
+When both projects are running locally, open the web app at `http://localhost:5273` or `https://localhost:7095` and the booking page will call the Functions API on port `7287`.
 The admin page is available at `/admin` and uses the development principal header only in local development.
+The admin web UI calls the Functions management endpoints under `/api/management/*` because `/admin/*` is reserved by Azure Functions host internals.
 
 Cosmos configuration for Functions local development:
 
