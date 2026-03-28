@@ -67,6 +67,7 @@
 		@if (!string.IsNullOrWhiteSpace(selectedServiceOfferId))
 		{
 			<button class="btn btn-outline-warning" @onclick="ToggleSelectedServiceOfferStatusAsync" disabled="@isSavingServiceOffer">@(serviceActive ? "Deactivate" : "Activate")</button>
+			<button class="btn btn-outline-danger" @onclick="DeleteSelectedServiceOfferAsync" disabled="@isSavingServiceOffer">Delete</button>
 		}
 		<button class="btn btn-outline-secondary" @onclick="ResetServiceOfferForm">Clear form</button>
 	</div>
@@ -129,6 +130,7 @@
 								<button class="btn btn-sm @(serviceOffer.Active ? "btn-outline-warning" : "btn-outline-success")" @onclick="() => ToggleServiceOfferStatusAsync(serviceOffer)">
 									@(serviceOffer.Active ? "Deactivate" : "Activate")
 								</button>
+								<button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteServiceOfferAsync(serviceOffer)">Delete</button>
 							</div>
 						</td>
 					</tr>
@@ -331,6 +333,22 @@
 		await ToggleServiceOfferStatusAsync(selectedServiceOffer);
 	}
 
+	private async Task DeleteSelectedServiceOfferAsync()
+	{
+		if (string.IsNullOrWhiteSpace(selectedServiceOfferId))
+		{
+			return;
+		}
+
+		var selectedServiceOffer = serviceOffers.FirstOrDefault(serviceOffer => serviceOffer.Id == selectedServiceOfferId);
+		if (selectedServiceOffer is null)
+		{
+			return;
+		}
+
+		await DeleteServiceOfferAsync(selectedServiceOffer);
+	}
+
 	private async Task ToggleServiceOfferStatusAsync(ServiceOfferDto serviceOffer)
 	{
 		serviceOfferMessage = null;
@@ -362,6 +380,42 @@
 		{
 			serviceOfferMessageClass = "text-danger";
 			serviceOfferMessage = serviceOffer.Active ? "Failed to deactivate service offer." : "Failed to activate service offer.";
+		}
+		finally
+		{
+			isSavingServiceOffer = false;
+		}
+	}
+
+	private async Task DeleteServiceOfferAsync(ServiceOfferDto serviceOffer)
+	{
+		serviceOfferMessage = null;
+		isSavingServiceOffer = true;
+
+		try
+		{
+			var error = await AdminApiClient.DeleteServiceOfferAsync(serviceOffer.Id, CancellationToken.None);
+			if (error is not null)
+			{
+				serviceOfferMessageClass = "text-danger";
+				serviceOfferMessage = error.Message;
+				return;
+			}
+
+			if (string.Equals(selectedServiceOfferId, serviceOffer.Id, StringComparison.Ordinal))
+			{
+				ResetServiceOfferForm();
+				lastSavedServiceOffer = null;
+			}
+
+			await LoadServiceOffersAsync();
+			serviceOfferMessageClass = "text-success";
+			serviceOfferMessage = "Service offer deleted.";
+		}
+		catch
+		{
+			serviceOfferMessageClass = "text-danger";
+			serviceOfferMessage = "Failed to delete service offer.";
 		}
 		finally
 		{

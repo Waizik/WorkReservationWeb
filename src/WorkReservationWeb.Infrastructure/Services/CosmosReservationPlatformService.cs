@@ -277,6 +277,43 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
             document.Active);
     }
 
+    public async Task<bool> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+        var linkedDocumentCountQuery = new QueryDefinition(
+            "SELECT VALUE COUNT(1) FROM c WHERE c.partitionKey = @partitionKey AND (c.Type = @slotType OR c.Type = @reservationType)")
+            .WithParameter("@partitionKey", serviceOfferId)
+            .WithParameter("@slotType", CosmosDocumentTypes.ReservationSlot)
+            .WithParameter("@reservationType", CosmosDocumentTypes.Reservation);
+
+        var countIterator = currentContainer.GetItemQueryIterator<int>(linkedDocumentCountQuery);
+        var linkedDocumentCount = 0;
+        while (countIterator.HasMoreResults)
+        {
+            var page = await countIterator.ReadNextAsync(cancellationToken);
+            linkedDocumentCount += page.FirstOrDefault();
+        }
+
+        if (linkedDocumentCount > 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            await currentContainer.DeleteItemAsync<ServiceOfferDocument>(
+                serviceOfferId,
+                new PartitionKey(serviceOfferId),
+                cancellationToken: cancellationToken);
+
+            return true;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         initializationLock.Dispose();

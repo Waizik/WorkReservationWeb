@@ -40,6 +40,20 @@ public sealed class ReservationAdminApiClient(HttpClient httpClient, IConfigurat
         return await response.Content.ReadFromJsonAsync<ServiceOfferDto>(cancellationToken: cancellationToken);
     }
 
+    public async Task<ApiErrorDto?> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Delete, $"api/management/services/{serviceOfferId}", cancellationToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        return await response.Content.ReadFromJsonAsync<ApiErrorDto>(cancellationToken: cancellationToken)
+            ?? new ApiErrorDto("delete_failed", "Failed to delete service offer.");
+    }
+
     private Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string path, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

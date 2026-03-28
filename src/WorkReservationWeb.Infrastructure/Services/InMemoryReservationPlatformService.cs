@@ -177,6 +177,17 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
         return Task.FromResult(ToDto(offer));
     }
 
+    public Task<bool> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken)
+    {
+        if (slots.Values.Any(slot => string.Equals(slot.ServiceOfferId, serviceOfferId, StringComparison.Ordinal)) ||
+            reservations.Values.Any(reservation => string.Equals(reservation.ServiceOfferId, serviceOfferId, StringComparison.Ordinal)))
+        {
+            return Task.FromResult(false);
+        }
+
+        return Task.FromResult(serviceOffers.TryRemove(serviceOfferId, out _));
+    }
+
     private static ServiceOfferDto ToDto(ServiceOffer offer)
     {
         return new ServiceOfferDto(

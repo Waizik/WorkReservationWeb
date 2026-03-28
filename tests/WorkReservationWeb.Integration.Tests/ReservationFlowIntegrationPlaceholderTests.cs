@@ -216,6 +216,88 @@ public class ReservationFlowIntegrationTests
         Assert.Equal("Selected service is not available.", createReservationResult.Message);
     }
 
+    [Fact]
+    public async Task DeleteServiceOffer_WithNoLinkedSlotsOrReservations_RemovesItFromManagementList()
+    {
+        var service = new InMemoryReservationPlatformService();
+        var serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var serviceProvider = new ServiceCollection()
+            .AddOptions()
+            .AddSingleton(serializerOptions)
+            .Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer(serializerOptions))
+            .BuildServiceProvider();
+        var functionContext = new TestFunctionContext(serviceProvider);
+
+        var upsertServiceOfferFunction = new UpsertServiceOfferFunction(service);
+        var deleteServiceOfferFunction = new DeleteServiceOfferFunction(service);
+        var getServiceOffersFunction = new GetServiceOffersFunction(service);
+
+        var createPayload = new UpsertServiceOfferRequestDto(
+            null,
+            "Deletable Offer",
+            "Offer without linked slots.",
+            10m,
+            [],
+            true);
+
+        var createRequest = new TestHttpRequestData(
+            functionContext,
+            "POST",
+            new Uri("https://localhost/api/management/services"),
+            JsonSerializer.Serialize(createPayload, serializerOptions));
+        createRequest.Headers.Add("x-ms-client-principal", TestStaticWebAppsPrincipalFactory.CreateHeaderValue("authenticated", "admin"));
+
+        var createResponse = await upsertServiceOfferFunction.Run(createRequest, CancellationToken.None);
+        var createdOffer = await DeserializeResponseAsync<ServiceOfferDto>(createResponse, serializerOptions);
+
+        var deleteRequest = new TestHttpRequestData(
+            functionContext,
+            "DELETE",
+            new Uri($"https://localhost/api/management/services/{createdOffer.Id}"));
+        deleteRequest.Headers.Add("x-ms-client-principal", TestStaticWebAppsPrincipalFactory.CreateHeaderValue("authenticated", "admin"));
+
+        var deleteResponse = await deleteServiceOfferFunction.Run(deleteRequest, createdOffer.Id, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var getServiceOffersRequest = new TestHttpRequestData(
+            functionContext,
+            "GET",
+            new Uri("https://localhost/api/management/services"));
+        getServiceOffersRequest.Headers.Add("x-ms-client-principal", TestStaticWebAppsPrincipalFactory.CreateHeaderValue("authenticated", "admin"));
+
+        var getServiceOffersResponse = await getServiceOffersFunction.Run(getServiceOffersRequest, CancellationToken.None);
+        var serviceOffers = await DeserializeResponseAsync<List<ServiceOfferDto>>(getServiceOffersResponse, serializerOptions);
+
+        Assert.DoesNotContain(serviceOffers, serviceOffer => serviceOffer.Id == createdOffer.Id);
+    }
+
+    [Fact]
+    public async Task DeleteServiceOffer_WithLinkedSlots_ReturnsConflict()
+    {
+        var service = new InMemoryReservationPlatformService();
+        var serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var serviceProvider = new ServiceCollection()
+            .AddOptions()
+            .AddSingleton(serializerOptions)
+            .Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer(serializerOptions))
+            .BuildServiceProvider();
+        var functionContext = new TestFunctionContext(serviceProvider);
+        var deleteServiceOfferFunction = new DeleteServiceOfferFunction(service);
+
+        var deleteRequest = new TestHttpRequestData(
+            functionContext,
+            "DELETE",
+            new Uri("https://localhost/api/management/services/srv_consultation"));
+        deleteRequest.Headers.Add("x-ms-client-principal", TestStaticWebAppsPrincipalFactory.CreateHeaderValue("authenticated", "admin"));
+
+        var deleteResponse = await deleteServiceOfferFunction.Run(deleteRequest, "srv_consultation", CancellationToken.None);
+        var error = await DeserializeResponseAsync<ApiErrorDto>(deleteResponse, serializerOptions);
+
+        Assert.Equal(HttpStatusCode.Conflict, deleteResponse.StatusCode);
+        Assert.Equal("service_offer_in_use", error.Code);
+    }
+
     private static async Task<T> DeserializeResponseAsync<T>(HttpResponseData response, JsonSerializerOptions serializerOptions)
     {
         response.Body.Position = 0;

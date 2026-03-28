@@ -2,6 +2,11 @@
 
 Lightweight reservation platform built for Azure serverless hosting.
 
+## Domain overview
+
+The application manages bookable services, the time slots offered for those services, and the reservations customers create against those slots.
+Admins maintain the service catalog and review reservations, while customers browse active services, choose an available slot, and submit a booking.
+
 ## Current status
 
 Initial implementation bootstrap is complete:
@@ -13,10 +18,11 @@ Initial implementation bootstrap is complete:
 - Public and admin API skeleton endpoints implemented.
 - In-memory reservation service added to demonstrate capacity-aware booking with ETag-style conflict behavior.
 - Blazor customer booking page implemented with service/slot selection and booking submission.
-- Blazor admin page implemented with reservation review and service-offer create/edit/deactivate management.
+- Blazor admin page implemented with reservation review and service-offer create/edit/deactivate/delete management.
 - Cosmos DB persistence implementation added behind the same service interface.
 - Functions startup now uses Cosmos when configured and falls back to in-memory storage otherwise.
 - Integration test coverage now exercises the in-memory reservation flow across public booking and admin reservation listing endpoints.
+- Opt-in integration coverage now validates the Cosmos transactional booking path against a real Cosmos endpoint or emulator.
 
 ## Solution structure
 
@@ -41,6 +47,7 @@ Admin (requires SWA principal header in this skeleton):
 
 - GET /api/management/services
 - GET /api/management/reservations
+- DELETE /api/management/services/{serviceOfferId}
 - POST /api/management/services
 
 Admin endpoints now require an `x-ms-client-principal` header containing a valid Azure Static Web Apps client principal with the `admin` role.
@@ -106,11 +113,11 @@ Cosmos configuration for Functions local development:
 
 ```json
 {
-	"Values": {
-		"CosmosDb:ConnectionString": "<your-cosmos-connection-string>",
-		"CosmosDb:DatabaseName": "WorkReservationWeb",
-		"CosmosDb:ContainerName": "Reservations"
-	}
+  "Values": {
+    "CosmosDb:ConnectionString": "<your-cosmos-connection-string>",
+    "CosmosDb:DatabaseName": "WorkReservationWeb",
+    "CosmosDb:ContainerName": "Reservations"
+  }
 }
 ```
 
@@ -122,9 +129,21 @@ Run tests:
 dotnet test src/WorkReservationWeb.slnx
 ```
 
+Run the opt-in Cosmos integration test against an emulator or disposable test environment:
+
+```powershell
+$env:WORKRESERVATION_RUN_COSMOS_TESTS = "true"
+$env:WORKRESERVATION_COSMOS_TEST_CONNECTION_STRING = "<your-cosmos-connection-string>"
+$env:WORKRESERVATION_COSMOS_TEST_DATABASE = "WorkReservationWebIntegrationTests"
+dotnet test tests/WorkReservationWeb.Integration.Tests/WorkReservationWeb.Integration.Tests.csproj --filter CosmosReservationPlatformServiceTests
+```
+
+The Cosmos test creates a unique database for each run and deletes it during cleanup.
+
 ## Next implementation steps
-- Extend integration coverage to Cosmos emulator or test-environment validation for the transactional booking path and add end-to-end browser automation coverage for the booking and admin flows now that localhost is working.
-- Add delete support for service offers in the admin UI and backend while preserving sensible behavior for existing reservations/slots.
+
+- Add end-to-end browser automation coverage for the booking and admin flows now that localhost is working.
 - Add Blob image upload flow and metadata persistence.
 - Add Azure Communication Services email confirmation and reminder processing.
+- Add logs for important behaviour.
 - Add CI/CD workflows for build/test/deploy.

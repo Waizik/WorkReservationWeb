@@ -100,5 +100,10 @@ public class CreateReservationFunctionValidationTests
         {
             throw new NotSupportedException();
         }
+
+        public Task<bool> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

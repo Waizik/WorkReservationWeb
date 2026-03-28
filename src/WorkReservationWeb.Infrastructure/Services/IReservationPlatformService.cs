@@ -19,4 +19,6 @@ public interface IReservationPlatformService
     Task<IReadOnlyList<ReservationSummaryDto>> GetReservationsAsync(CancellationToken cancellationToken);
 
     Task<ServiceOfferDto> UpsertServiceOfferAsync(UpsertServiceOfferRequestDto request, CancellationToken cancellationToken);
+
+    Task<bool> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken);
 }
