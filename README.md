@@ -23,6 +23,7 @@ Initial implementation bootstrap is complete:
 - Functions startup now uses Cosmos when configured and falls back to in-memory storage otherwise.
 - Integration test coverage now exercises the in-memory reservation flow across public booking and admin reservation listing endpoints.
 - Opt-in integration coverage now validates the Cosmos transactional booking path against a real Cosmos endpoint or emulator.
+- Browser end-to-end coverage now exercises the localhost booking flow and admin service-offer management flow with Playwright.
 
 ## Solution structure
 
@@ -34,6 +35,7 @@ Initial implementation bootstrap is complete:
 - src/WorkReservationWeb.Infrastructure
 - tests/WorkReservationWeb.Functions.Tests
 - tests/WorkReservationWeb.Integration.Tests
+- tests/WorkReservationWeb.Browser.Tests
 
 ## API routes currently available
 
@@ -129,6 +131,12 @@ Run tests:
 dotnet test src/WorkReservationWeb.slnx
 ```
 
+The browser test project starts the local Functions host and the Blazor app automatically, but Playwright Chromium must be installed once before the browser suite or full solution test run:
+
+```powershell
+pwsh tests/WorkReservationWeb.Browser.Tests/bin/Debug/net10.0/playwright.ps1 install chromium
+```
+
 Run the opt-in Cosmos integration test against an emulator or disposable test environment:
 
 ```powershell
@@ -142,7 +150,6 @@ The Cosmos test creates a unique database for each run and deletes it during cle
 
 ## Next implementation steps
 
-- Add end-to-end browser automation coverage for the booking and admin flows now that localhost is working.
 - Add Blob image upload flow and metadata persistence.
 - Add Azure Communication Services email confirmation and reminder processing.
 - Add logs for important behaviour.
