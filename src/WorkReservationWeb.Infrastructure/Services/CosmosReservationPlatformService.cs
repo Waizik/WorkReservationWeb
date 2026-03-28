@@ -185,7 +185,9 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
             CustomerEmail = request.CustomerEmail.Trim(),
             Note = request.Note?.Trim(),
             CreatedAtUtc = DateTimeOffset.UtcNow,
-            Status = ReservationStatus.Confirmed.ToString()
+            Status = ReservationStatus.Confirmed.ToString(),
+            ConfirmationSentAtUtc = null,
+            ReminderSentAtUtc = null
         };
 
         var batch = currentContainer.CreateTransactionalBatch(new PartitionKey(request.ServiceOfferId))
@@ -240,9 +242,105 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
             document.CustomerEmail,
             document.Note,
             document.CreatedAtUtc,
-            document.Status), cancellationToken);
+            document.Status,
+            document.ConfirmationSentAtUtc,
+            document.ReminderSentAtUtc), cancellationToken);
 
         return results.OrderByDescending(x => x.CreatedAtUtc).ToArray();
+    }
+
+    public async Task MarkReservationConfirmationSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+        var reservation = await TryGetReservationAsync(currentContainer, reservationId, cancellationToken);
+        if (reservation is null)
+        {
+            return;
+        }
+
+        await currentContainer.PatchItemAsync<ReservationDocument>(
+            reservation.id,
+            new PartitionKey(reservation.partitionKey),
+            [PatchOperation.Set("/ConfirmationSentAtUtc", sentAtUtc)],
+            cancellationToken: cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ReservationNotificationContextDto>> GetReservationsDueForReminderAsync(DateTimeOffset reminderWindowEndUtc, CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+        var query = new QueryDefinition(
+            "SELECT * FROM c WHERE c.Type = @type AND c.Status = @status AND (NOT IS_DEFINED(c.ReminderSentAtUtc) OR IS_NULL(c.ReminderSentAtUtc))")
+            .WithParameter("@type", CosmosDocumentTypes.Reservation)
+            .WithParameter("@status", ReservationStatus.Confirmed.ToString());
+
+        var reservationsDueForEvaluation = await ReadAllAsync<ReservationDocument, ReservationDocument>(
+            currentContainer,
+            query,
+            static document => document,
+            cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        var results = new List<ReservationNotificationContextDto>();
+
+        foreach (var reservation in reservationsDueForEvaluation)
+        {
+            ReservationSlotDocument? slot;
+            try
+            {
+                var slotResponse = await currentContainer.ReadItemAsync<ReservationSlotDocument>(
+                    reservation.SlotId,
+                    new PartitionKey(reservation.ServiceOfferId),
+                    cancellationToken: cancellationToken);
+                slot = slotResponse.Resource;
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                continue;
+            }
+
+            if (slot.StartUtc < now || slot.StartUtc > reminderWindowEndUtc)
+            {
+                continue;
+            }
+
+            var serviceOffer = await TryGetServiceOfferAsync(currentContainer, reservation.ServiceOfferId, cancellationToken);
+            if (serviceOffer is null)
+            {
+                continue;
+            }
+
+            results.Add(new ReservationNotificationContextDto(
+                reservation.id,
+                reservation.ServiceOfferId,
+                serviceOffer.Title,
+                reservation.SlotId,
+                slot.StartUtc,
+                slot.EndUtc,
+                reservation.CustomerName,
+                reservation.CustomerEmail,
+                reservation.Note,
+                reservation.CreatedAtUtc,
+                reservation.ConfirmationSentAtUtc,
+                reservation.ReminderSentAtUtc));
+        }
+
+        return results.OrderBy(x => x.SlotStartUtc).ToArray();
+    }
+
+    public async Task MarkReservationReminderSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+        var reservation = await TryGetReservationAsync(currentContainer, reservationId, cancellationToken);
+        if (reservation is null)
+        {
+            return;
+        }
+
+        await currentContainer.PatchItemAsync<ReservationDocument>(
+            reservation.id,
+            new PartitionKey(reservation.partitionKey),
+            [PatchOperation.Set("/ReminderSentAtUtc", sentAtUtc)],
+            cancellationToken: cancellationToken);
     }
 
     public async Task<ServiceOfferDto> UpsertServiceOfferAsync(UpsertServiceOfferRequestDto request, CancellationToken cancellationToken)
@@ -367,6 +465,30 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
         {
             return null;
         }
+    }
+
+    private static async Task<ReservationDocument?> TryGetReservationAsync(
+        Container currentContainer,
+        string reservationId,
+        CancellationToken cancellationToken)
+    {
+        var query = new QueryDefinition(
+            "SELECT * FROM c WHERE c.Type = @type AND c.id = @id")
+            .WithParameter("@type", CosmosDocumentTypes.Reservation)
+            .WithParameter("@id", reservationId);
+
+        var iterator = currentContainer.GetItemQueryIterator<ReservationDocument>(query);
+        while (iterator.HasMoreResults)
+        {
+            var page = await iterator.ReadNextAsync(cancellationToken);
+            var reservation = page.FirstOrDefault();
+            if (reservation is not null)
+            {
+                return reservation;
+            }
+        }
+
+        return null;
     }
 
     private static async Task<List<TDto>> ReadAllAsync<TDocument, TDto>(

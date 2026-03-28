@@ -18,6 +18,12 @@ public interface IReservationPlatformService
 
     Task<IReadOnlyList<ReservationSummaryDto>> GetReservationsAsync(CancellationToken cancellationToken);
 
+    Task MarkReservationConfirmationSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ReservationNotificationContextDto>> GetReservationsDueForReminderAsync(DateTimeOffset reminderWindowEndUtc, CancellationToken cancellationToken);
+
+    Task MarkReservationReminderSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken);
+
     Task<ServiceOfferDto> UpsertServiceOfferAsync(UpsertServiceOfferRequestDto request, CancellationToken cancellationToken);
 
     Task<bool> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken);

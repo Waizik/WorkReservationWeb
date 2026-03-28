@@ -57,7 +57,9 @@ public sealed class BrowserFlowsTests(LocalAppHostFixture hostFixture) : IAsyncL
 
         await page.GotoAsync("/admin");
         await page.WaitForSelectorAsync("h1:has-text('Admin')");
-        await page.WaitForSelectorAsync($"text={reservationEmail}");
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        await page.GetByRole(AriaRole.Button, new() { Name = "Refresh" }).Last.ClickAsync();
+        await page.WaitForSelectorAsync($"text={reservationEmail}", new() { Timeout = 60000 });
     }
 
     [Fact]

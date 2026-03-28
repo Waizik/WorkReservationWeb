@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.DependencyInjection;
 using WorkReservationWeb.Functions.Public;
+using WorkReservationWeb.Infrastructure.Notifications;
 using WorkReservationWeb.Infrastructure.Services;
 using WorkReservationWeb.Shared.Contracts;
 
@@ -16,6 +17,7 @@ public class CreateReservationFunctionValidationTests
     public async Task Run_WithMissingRequiredFields_ReturnsBadRequestWithoutCallingService()
     {
         var service = new RecordingReservationPlatformService();
+        var notifications = new RecordingReservationNotificationService();
         var serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var serviceProvider = new ServiceCollection()
             .AddOptions()
@@ -23,7 +25,7 @@ public class CreateReservationFunctionValidationTests
             .Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer(serializerOptions))
             .BuildServiceProvider();
         var functionContext = new TestFunctionContext(serviceProvider);
-        var function = new CreateReservationFunction(service);
+        var function = new CreateReservationFunction(service, notifications);
 
         var requestPayload = new CreateReservationRequestDto(
             string.Empty,
@@ -47,6 +49,44 @@ public class CreateReservationFunctionValidationTests
         Assert.Equal(ReservationCreateOutcome.ValidationFailed, result.Outcome);
         Assert.Equal("Required fields are missing.", result.Message);
         Assert.Equal(0, service.CreateReservationCallCount);
+    }
+
+    [Fact]
+    public async Task Run_WhenReservationCreated_SendsConfirmationAndMarksReservation()
+    {
+        var service = new RecordingReservationPlatformService();
+        var notifications = new RecordingReservationNotificationService();
+        var serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var serviceProvider = new ServiceCollection()
+            .AddOptions()
+            .AddSingleton(serializerOptions)
+            .Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer(serializerOptions))
+            .BuildServiceProvider();
+        var functionContext = new TestFunctionContext(serviceProvider);
+        var function = new CreateReservationFunction(service, notifications);
+
+        var requestPayload = new CreateReservationRequestDto(
+            "srv-1",
+            "slot-1",
+            "etag-1",
+            "User",
+            "user@example.com",
+            "note");
+
+        var request = new TestHttpRequestData(
+            functionContext,
+            "POST",
+            new Uri("https://localhost/api/public/reservations"),
+            JsonSerializer.Serialize(requestPayload, serializerOptions));
+
+        var response = await function.Run(request, CancellationToken.None);
+        var result = await DeserializeResponseAsync<CreateReservationResultDto>(response, serializerOptions);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.True(result.Success);
+        Assert.Equal(1, service.CreateReservationCallCount);
+        Assert.Equal(1, notifications.ConfirmationCallCount);
+        Assert.Equal("res-1", service.MarkedConfirmationReservationId);
     }
 
     private static async Task<T> DeserializeResponseAsync<T>(HttpResponseData response, JsonSerializerOptions serializerOptions)
@@ -96,12 +136,46 @@ public class CreateReservationFunctionValidationTests
             throw new NotSupportedException();
         }
 
+        public Task MarkReservationConfirmationSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)
+        {
+            MarkedConfirmationReservationId = reservationId;
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<ReservationNotificationContextDto>> GetReservationsDueForReminderAsync(DateTimeOffset reminderWindowEndUtc, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task MarkReservationReminderSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
         public Task<ServiceOfferDto> UpsertServiceOfferAsync(UpsertServiceOfferRequestDto request, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();
         }
 
         public Task<bool> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public string? MarkedConfirmationReservationId { get; private set; }
+    }
+
+    private sealed class RecordingReservationNotificationService : IReservationNotificationService
+    {
+        public int ConfirmationCallCount { get; private set; }
+
+        public Task SendReservationConfirmationAsync(ReservationNotificationContextDto reservation, CancellationToken cancellationToken)
+        {
+            ConfirmationCallCount++;
+            return Task.CompletedTask;
+        }
+
+        public Task SendReservationReminderAsync(ReservationNotificationContextDto reservation, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();
         }

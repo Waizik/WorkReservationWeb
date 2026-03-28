@@ -171,8 +171,16 @@
 <section>
 	<div class="d-flex justify-content-between align-items-center mb-3">
 		<h2 class="h4 mb-0">Reservations</h2>
-		<button class="btn btn-outline-secondary" @onclick="LoadReservationsAsync" disabled="@isLoadingReservations">Refresh</button>
+		<div class="d-flex gap-2">
+			<button class="btn btn-outline-primary" @onclick="ProcessReservationRemindersAsync" disabled="@(isLoadingReservations || isProcessingReminders)">Send due reminders</button>
+			<button class="btn btn-outline-secondary" @onclick="LoadReservationsAsync" disabled="@isLoadingReservations">Refresh</button>
+		</div>
 	</div>
+
+	@if (!string.IsNullOrWhiteSpace(reminderMessage))
+	{
+		<p class="@reminderMessageClass">@reminderMessage</p>
+	}
 
 	@if (!string.IsNullOrWhiteSpace(reservationsErrorMessage))
 	{
@@ -196,6 +204,8 @@
 					<th>Email</th>
 					<th>Service</th>
 					<th>Slot</th>
+					<th>Confirmation</th>
+					<th>Reminder</th>
 					<th>Status</th>
 				</tr>
 				</thead>
@@ -208,6 +218,8 @@
 						<td>@reservation.CustomerEmail</td>
 						<td>@reservation.ServiceOfferId</td>
 						<td>@reservation.SlotId</td>
+						<td>@FormatNotificationStatus(reservation.ConfirmationSentAtUtc)</td>
+						<td>@FormatNotificationStatus(reservation.ReminderSentAtUtc)</td>
 						<td>@reservation.Status</td>
 					</tr>
 				}
@@ -224,12 +236,15 @@
 	private bool isLoadingServiceOffers = true;
 	private bool isSavingServiceOffer;
 	private bool isUploadingImage;
+	private bool isProcessingReminders;
 	private string? reservationsErrorMessage;
 	private string? serviceOffersErrorMessage;
 	private string? serviceOfferMessage;
 	private string serviceOfferMessageClass = "text-success";
 	private string? imageUploadMessage;
 	private string imageUploadMessageClass = "text-success";
+	private string? reminderMessage;
+	private string reminderMessageClass = "text-success";
 
 	private string selectedServiceOfferId = string.Empty;
 	private string serviceTitle = string.Empty;
@@ -298,6 +313,31 @@
 		finally
 		{
 			isLoadingReservations = false;
+		}
+	}
+
+	private async Task ProcessReservationRemindersAsync()
+	{
+		reminderMessage = null;
+		isProcessingReminders = true;
+
+		try
+		{
+			var result = await AdminApiClient.ProcessReservationRemindersAsync(CancellationToken.None);
+			await LoadReservationsAsync();
+			reminderMessageClass = result is not null && result.FailedCount > 0 ? "text-warning" : "text-success";
+			reminderMessage = result is null
+				? "Reminder processing completed with no payload."
+				: $"Processed {result.ProcessedCount} reminder candidates. Sent {result.SentCount}, failed {result.FailedCount}.";
+		}
+		catch
+		{
+			reminderMessageClass = "text-danger";
+			reminderMessage = "Failed to process reminders.";
+		}
+		finally
+		{
+			isProcessingReminders = false;
 		}
 	}
 
@@ -538,5 +578,12 @@
 	private void RemoveImage(string imageUrl)
 	{
 		serviceImageUrls.RemoveAll(url => string.Equals(url, imageUrl, StringComparison.OrdinalIgnoreCase));
+	}
+
+	private static string FormatNotificationStatus(DateTimeOffset? sentAtUtc)
+	{
+		return sentAtUtc is null
+			? "Pending"
+			: sentAtUtc.Value.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
 	}
 }

@@ -116,7 +116,9 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
                 CustomerEmail = request.CustomerEmail.Trim(),
                 Note = request.Note?.Trim(),
                 CreatedAtUtc = DateTimeOffset.UtcNow,
-                Status = ReservationStatus.Confirmed
+                Status = ReservationStatus.Confirmed,
+                ConfirmationSentAtUtc = null,
+                ReminderSentAtUtc = null
             };
 
             reservations[reservationId] = reservation;
@@ -148,10 +150,67 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
                 x.CustomerEmail,
                 x.Note,
                 x.CreatedAtUtc,
-                x.Status.ToString()))
+                x.Status.ToString(),
+                x.ConfirmationSentAtUtc,
+                x.ReminderSentAtUtc))
             .ToArray();
 
         return Task.FromResult<IReadOnlyList<ReservationSummaryDto>>(result);
+    }
+
+    public Task MarkReservationConfirmationSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)
+    {
+        if (reservations.TryGetValue(reservationId, out var reservation))
+        {
+            reservation.ConfirmationSentAtUtc = sentAtUtc;
+            reservations[reservationId] = reservation;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<ReservationNotificationContextDto>> GetReservationsDueForReminderAsync(DateTimeOffset reminderWindowEndUtc, CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var result = reservations.Values
+            .Where(reservation => reservation.Status == ReservationStatus.Confirmed)
+            .Where(reservation => reservation.ReminderSentAtUtc is null)
+            .Select(reservation =>
+            {
+                slots.TryGetValue(reservation.SlotId, out var slot);
+                serviceOffers.TryGetValue(reservation.ServiceOfferId, out var serviceOffer);
+                return new { reservation, slot, serviceOffer };
+            })
+            .Where(candidate => candidate.slot is not null && candidate.serviceOffer is not null)
+            .Where(candidate => candidate.slot!.StartUtc >= now && candidate.slot.StartUtc <= reminderWindowEndUtc)
+            .OrderBy(candidate => candidate.slot!.StartUtc)
+            .Select(candidate => new ReservationNotificationContextDto(
+                candidate.reservation.Id,
+                candidate.reservation.ServiceOfferId,
+                candidate.serviceOffer!.Title,
+                candidate.reservation.SlotId,
+                candidate.slot!.StartUtc,
+                candidate.slot.EndUtc,
+                candidate.reservation.CustomerName,
+                candidate.reservation.CustomerEmail,
+                candidate.reservation.Note,
+                candidate.reservation.CreatedAtUtc,
+                candidate.reservation.ConfirmationSentAtUtc,
+                candidate.reservation.ReminderSentAtUtc))
+            .ToArray();
+
+        return Task.FromResult<IReadOnlyList<ReservationNotificationContextDto>>(result);
+    }
+
+    public Task MarkReservationReminderSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)
+    {
+        if (reservations.TryGetValue(reservationId, out var reservation))
+        {
+            reservation.ReminderSentAtUtc = sentAtUtc;
+            reservations[reservationId] = reservation;
+        }
+
+        return Task.CompletedTask;
     }
 
     public Task<ServiceOfferDto> UpsertServiceOfferAsync(UpsertServiceOfferRequestDto request, CancellationToken cancellationToken)

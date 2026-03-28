@@ -25,6 +25,7 @@ Initial implementation bootstrap is complete:
 - Opt-in integration coverage now validates the Cosmos transactional booking path against a real Cosmos endpoint or emulator.
 - Browser end-to-end coverage now exercises the localhost booking flow and admin service-offer management flow with Playwright.
 - Service-offer images can now be uploaded through the admin UI, stored in Azure Blob Storage when configured or local file storage otherwise, and served through a public asset endpoint.
+- Reservation booking now sends confirmation notifications, and due reminder notifications can be processed both from the admin flow and from a scheduled Azure Function with Azure Communication Services or a local file fallback.
 
 ## Solution structure
 
@@ -139,6 +140,37 @@ Blob image storage configuration for Functions local development:
 
 If the Blob connection string is left empty, uploaded images are stored in a local `uploaded-assets` folder next to the Functions runtime output.
 
+Communication Services configuration for Functions local development:
+
+```json
+{
+  "Values": {
+    "CommunicationServices:ConnectionString": "<your-acs-connection-string>",
+    "CommunicationServices:SenderAddress": "DoNotReply@<your-domain>.azurecomm.net"
+  }
+}
+```
+
+If Communication Services is not configured, confirmation and reminder messages are written to a local `sent-emails` folder next to the Functions runtime output.
+
+Reminder schedule configuration for Functions local development:
+
+```json
+{
+  "Values": {
+    "ReservationReminderSchedule": "0 0 0 * * *"
+  }
+}
+```
+
+The scheduled reminder Function uses 6-field NCRONTAB syntax including seconds. The default sample runs once per day at midnight. In NCRONTAB terms, `0 0 0 * * *` means second 0, minute 0, hour 0, every day.
+
+This setting is required for startup. The Functions host now validates `ReservationReminderSchedule` at startup and fails fast if the value is missing or invalid.
+
+After deployment, update the Azure Function App application setting `ReservationReminderSchedule` as well. `local.settings.json` is only used for local development and is not deployed to Azure.
+
+The admin UI button remains available as a manual retry or override path even when the scheduled Function is enabled.
+
 Run tests:
 
 ```powershell
@@ -164,6 +196,5 @@ The Cosmos test creates a unique database for each run and deletes it during cle
 
 ## Next implementation steps
 
-- Add Azure Communication Services email confirmation and reminder processing.
 - Add logs for important behaviour.
 - Add CI/CD workflows for build/test/deploy.

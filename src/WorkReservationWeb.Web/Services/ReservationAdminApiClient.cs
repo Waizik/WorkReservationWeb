@@ -31,6 +31,15 @@ public sealed class ReservationAdminApiClient(HttpClient httpClient, IConfigurat
         return payload ?? [];
     }
 
+    public async Task<ProcessReservationRemindersResultDto?> ProcessReservationRemindersAsync(CancellationToken cancellationToken)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Post, "api/management/reservations/reminders/process", cancellationToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<ProcessReservationRemindersResultDto>(cancellationToken: cancellationToken);
+    }
+
     public async Task<ServiceOfferDto?> UpsertServiceOfferAsync(UpsertServiceOfferRequestDto requestDto, CancellationToken cancellationToken)
     {
         using var request = await CreateRequestAsync(HttpMethod.Post, "api/management/services", cancellationToken);

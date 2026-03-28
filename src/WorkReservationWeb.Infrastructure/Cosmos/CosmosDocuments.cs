@@ -68,4 +68,8 @@ internal sealed class ReservationDocument
     public required DateTimeOffset CreatedAtUtc { get; init; }
 
     public required string Status { get; init; }
+
+    public DateTimeOffset? ConfirmationSentAtUtc { get; init; }
+
+    public DateTimeOffset? ReminderSentAtUtc { get; init; }
 }

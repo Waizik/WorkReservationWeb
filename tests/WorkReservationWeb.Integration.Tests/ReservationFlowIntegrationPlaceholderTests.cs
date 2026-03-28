@@ -4,6 +4,7 @@ using Azure.Core.Serialization;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
+using WorkReservationWeb.Infrastructure.Notifications;
 using WorkReservationWeb.Functions.Admin;
 using WorkReservationWeb.Functions.Public;
 using WorkReservationWeb.Infrastructure.Services;
@@ -50,10 +51,11 @@ public class ReservationFlowIntegrationTests
             .Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer(serializerOptions))
             .BuildServiceProvider();
         var functionContext = new TestFunctionContext(serviceProvider);
+        using var sentEmailDirectory = new TemporaryDirectory();
 
         var getServicesFunction = new GetActiveServiceOffersFunction(service);
         var getSlotsFunction = new GetAvailableSlotsFunction(service);
-        var createReservationFunction = new CreateReservationFunction(service);
+        var createReservationFunction = new CreateReservationFunction(service, new LocalDevelopmentReservationNotificationService(sentEmailDirectory.Path));
         var getReservationsFunction = new GetReservationsFunction(service);
 
         var getServicesRequest = new TestHttpRequestData(
@@ -129,11 +131,12 @@ public class ReservationFlowIntegrationTests
             .Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer(serializerOptions))
             .BuildServiceProvider();
         var functionContext = new TestFunctionContext(serviceProvider);
+        using var sentEmailDirectory = new TemporaryDirectory();
 
         var getServicesFunction = new GetActiveServiceOffersFunction(service);
         var getManagementServicesFunction = new GetServiceOffersFunction(service);
         var getSlotsFunction = new GetAvailableSlotsFunction(service);
-        var createReservationFunction = new CreateReservationFunction(service);
+        var createReservationFunction = new CreateReservationFunction(service, new LocalDevelopmentReservationNotificationService(sentEmailDirectory.Path));
         var upsertServiceOfferFunction = new UpsertServiceOfferFunction(service);
 
         var deactivatePayload = new UpsertServiceOfferRequestDto(
@@ -303,5 +306,24 @@ public class ReservationFlowIntegrationTests
         response.Body.Position = 0;
         var result = await JsonSerializer.DeserializeAsync<T>(response.Body, serializerOptions);
         return Assert.IsType<T>(result);
+    }
+
+    private sealed class TemporaryDirectory : IDisposable
+    {
+        public TemporaryDirectory()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"wrw-int-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Path);
+        }
+
+        public string Path { get; }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(Path))
+            {
+                Directory.Delete(Path, recursive: true);
+            }
+        }
     }
 }

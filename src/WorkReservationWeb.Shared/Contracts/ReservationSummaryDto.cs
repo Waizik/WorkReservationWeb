@@ -8,4 +8,6 @@ public sealed record ReservationSummaryDto(
     string CustomerEmail,
     string? Note,
     DateTimeOffset CreatedAtUtc,
-    string Status);
+    string Status,
+    DateTimeOffset? ConfirmationSentAtUtc = null,
+    DateTimeOffset? ReminderSentAtUtc = null);

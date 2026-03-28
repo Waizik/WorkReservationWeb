@@ -1,11 +1,14 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using WorkReservationWeb.Infrastructure.Notifications;
 using WorkReservationWeb.Infrastructure.Services;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Functions.Public;
 
-public sealed class CreateReservationFunction(IReservationPlatformService reservationPlatformService)
+public sealed class CreateReservationFunction(
+    IReservationPlatformService reservationPlatformService,
+    IReservationNotificationService notificationService)
 {
     [Function("CreateReservation")]
     public async Task<HttpResponseData> Run(
@@ -97,6 +100,33 @@ public sealed class CreateReservationFunction(IReservationPlatformService reserv
         }
 
         var result = await reservationPlatformService.CreateReservationAsync(payload, cancellationToken);
+
+        if (result.Success && !string.IsNullOrWhiteSpace(result.ReservationId))
+        {
+            var confirmationContext = new ReservationNotificationContextDto(
+                result.ReservationId,
+                serviceOffer.Id,
+                serviceOffer.Title,
+                slot.Id,
+                slot.StartUtc,
+                slot.EndUtc,
+                payload.CustomerName.Trim(),
+                payload.CustomerEmail.Trim(),
+                payload.Note?.Trim(),
+                DateTimeOffset.UtcNow,
+                null,
+                null);
+
+            try
+            {
+                var sentAtUtc = DateTimeOffset.UtcNow;
+                await notificationService.SendReservationConfirmationAsync(confirmationContext, cancellationToken);
+                await reservationPlatformService.MarkReservationConfirmationSentAsync(result.ReservationId, sentAtUtc, cancellationToken);
+            }
+            catch
+            {
+            }
+        }
 
         var statusCode = result.Outcome switch
         {

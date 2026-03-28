@@ -17,4 +17,8 @@ public sealed class Reservation
     public DateTimeOffset CreatedAtUtc { get; init; }
 
     public ReservationStatus Status { get; set; }
+
+    public DateTimeOffset? ConfirmationSentAtUtc { get; set; }
+
+    public DateTimeOffset? ReminderSentAtUtc { get; set; }
 }
