@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Net;
-using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace WorkReservationWeb.Browser.Tests;
 
@@ -23,6 +23,9 @@ public sealed class LocalAppHostFixture : IAsyncLifetime
     {
         functionsBaseUri = FunctionsDevelopmentUri;
         webBaseUri = WebDevelopmentUri;
+
+        EnsurePortAvailable(functionsBaseUri.Port);
+        EnsurePortAvailable(webBaseUri.Port);
 
         functionsProcess = StartProcess(
             "dotnet",
@@ -156,6 +159,53 @@ public sealed class LocalAppHostFixture : IAsyncLifetime
         {
             outputBuffer.AppendLine(line);
         }
+    }
+
+    private static void EnsurePortAvailable(int port)
+    {
+        foreach (var processId in GetProcessIdsUsingPort(port))
+        {
+            try
+            {
+                using var process = Process.GetProcessById(processId);
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private static IReadOnlyCollection<int> GetProcessIdsUsingPort(int port)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "netstat",
+                Arguments = "-ano -p tcp",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+
+        process.Start();
+        var output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit(5000);
+
+        var processIds = new HashSet<int>();
+        var pattern = new Regex($@"^\s*TCP\s+\S+:{port}\s+\S+\s+\S+\s+(\d+)\s*$", RegexOptions.Multiline);
+        foreach (Match match in pattern.Matches(output))
+        {
+            if (int.TryParse(match.Groups[1].Value, out var processId) && processId > 0)
+            {
+                processIds.Add(processId);
+            }
+        }
+
+        return processIds.ToArray();
     }
 
     private static void StopProcess(Process? process)

@@ -24,6 +24,7 @@ Initial implementation bootstrap is complete:
 - Integration test coverage now exercises the in-memory reservation flow across public booking and admin reservation listing endpoints.
 - Opt-in integration coverage now validates the Cosmos transactional booking path against a real Cosmos endpoint or emulator.
 - Browser end-to-end coverage now exercises the localhost booking flow and admin service-offer management flow with Playwright.
+- Service-offer images can now be uploaded through the admin UI, stored in Azure Blob Storage when configured or local file storage otherwise, and served through a public asset endpoint.
 
 ## Solution structure
 
@@ -125,6 +126,19 @@ Cosmos configuration for Functions local development:
 
 If the Cosmos connection string is left empty, the app uses the in-memory implementation and seeded sample data.
 
+Blob image storage configuration for Functions local development:
+
+```json
+{
+  "Values": {
+    "BlobStorage:ConnectionString": "<your-blob-connection-string>",
+    "BlobStorage:ContainerName": "service-offer-images"
+  }
+}
+```
+
+If the Blob connection string is left empty, uploaded images are stored in a local `uploaded-assets` folder next to the Functions runtime output.
+
 Run tests:
 
 ```powershell
@@ -150,7 +164,6 @@ The Cosmos test creates a unique database for each run and deletes it during cle
 
 ## Next implementation steps
 
-- Add Blob image upload flow and metadata persistence.
 - Add Azure Communication Services email confirmation and reminder processing.
 - Add logs for important behaviour.
 - Add CI/CD workflows for build/test/deploy.

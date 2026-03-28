@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.Configuration;
 using WorkReservationWeb.Shared.Contracts;
 
@@ -38,6 +39,25 @@ public sealed class ReservationAdminApiClient(HttpClient httpClient, IConfigurat
         using var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ServiceOfferDto>(cancellationToken: cancellationToken);
+    }
+
+    public async Task<ServiceOfferImageUploadResultDto?> UploadServiceOfferImageAsync(IBrowserFile file, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        await using var sourceStream = file.OpenReadStream(5 * 1024 * 1024, cancellationToken);
+        await using var memoryStream = new MemoryStream();
+        await sourceStream.CopyToAsync(memoryStream, cancellationToken);
+
+        using var request = await CreateRequestAsync(HttpMethod.Post, "api/management/service-images", cancellationToken);
+        request.Content = JsonContent.Create(new UploadServiceOfferImageRequestDto(
+            file.Name,
+            string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            Convert.ToBase64String(memoryStream.ToArray())));
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ServiceOfferImageUploadResultDto>(cancellationToken: cancellationToken);
     }
 
     public async Task<ApiErrorDto?> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken)

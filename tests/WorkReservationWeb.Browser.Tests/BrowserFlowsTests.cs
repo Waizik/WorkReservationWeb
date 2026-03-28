@@ -82,7 +82,6 @@ public sealed class BrowserFlowsTests(LocalAppHostFixture hostFixture) : IAsyncL
         await page.FillAsync("#serviceTitle", title);
         await page.FillAsync("#serviceDescription", "Service offer managed by browser automation.");
         await page.FillAsync("#serviceBasePrice", "75.50");
-        await page.FillAsync("#serviceImageUrls", "https://example.invalid/browser-test.jpg");
         await page.GetByRole(AriaRole.Button, new() { Name = "Save service offer" }).ClickAsync();
 
         await page.WaitForSelectorAsync("text=Service offer saved.", new() { Timeout = 60000 });
