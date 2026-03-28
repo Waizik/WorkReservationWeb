@@ -13,7 +13,7 @@ Initial implementation bootstrap is complete:
 - Public and admin API skeleton endpoints implemented.
 - In-memory reservation service added to demonstrate capacity-aware booking with ETag-style conflict behavior.
 - Blazor customer booking page implemented with service/slot selection and booking submission.
-- Blazor admin page implemented with reservation review and service-offer create/edit management.
+- Blazor admin page implemented with reservation review and service-offer create/edit/deactivate management.
 - Cosmos DB persistence implementation added behind the same service interface.
 - Functions startup now uses Cosmos when configured and falls back to in-memory storage otherwise.
 - Integration test coverage now exercises the in-memory reservation flow across public booking and admin reservation listing endpoints.
@@ -39,6 +39,7 @@ Public:
 
 Admin (requires SWA principal header in this skeleton):
 
+- GET /api/management/services
 - GET /api/management/reservations
 - POST /api/management/services
 
@@ -122,8 +123,8 @@ dotnet test src/WorkReservationWeb.slnx
 ```
 
 ## Next implementation steps
-
-- Extend integration coverage to Cosmos emulator or test-environment validation for the transactional booking path.
+- Extend integration coverage to Cosmos emulator or test-environment validation for the transactional booking path and add end-to-end browser automation coverage for the booking and admin flows now that localhost is working.
+- Add delete support for service offers in the admin UI and backend while preserving sensible behavior for existing reservations/slots.
 - Add Blob image upload flow and metadata persistence.
 - Add Azure Communication Services email confirmation and reminder processing.
 - Add CI/CD workflows for build/test/deploy.

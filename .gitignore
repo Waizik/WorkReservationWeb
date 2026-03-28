@@ -56,3 +56,4 @@ src/WorkReservationWeb.Web/wwwroot/**/*.map
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+.fake

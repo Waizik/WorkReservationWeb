@@ -10,6 +10,16 @@ public sealed class ReservationAdminApiClient(HttpClient httpClient, IConfigurat
 
     public bool UsesConfiguredClientPrincipal => !string.IsNullOrWhiteSpace(configuration["AdminClientPrincipalHeader"]);
 
+    public async Task<IReadOnlyList<ServiceOfferDto>> GetServiceOffersAsync(CancellationToken cancellationToken)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Get, "api/management/services", cancellationToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<IReadOnlyList<ServiceOfferDto>>(cancellationToken: cancellationToken);
+        return payload ?? [];
+    }
+
     public async Task<IReadOnlyList<ReservationSummaryDto>> GetReservationsAsync(CancellationToken cancellationToken)
     {
         using var request = await CreateRequestAsync(HttpMethod.Get, "api/management/reservations", cancellationToken);

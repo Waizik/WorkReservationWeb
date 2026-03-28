@@ -21,6 +21,67 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
         this.containerName = containerName;
     }
 
+    public async Task<ServiceOfferDto?> GetServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+        var serviceOffer = await TryGetServiceOfferAsync(currentContainer, serviceOfferId, cancellationToken);
+        return serviceOffer is null
+            ? null
+            : new ServiceOfferDto(
+                serviceOffer.id,
+                serviceOffer.Title,
+                serviceOffer.Description,
+                serviceOffer.BasePrice,
+                serviceOffer.ImageUrls,
+                serviceOffer.Active);
+    }
+
+    public async Task<ReservationSlotDto?> GetReservationSlotAsync(string serviceOfferId, string slotId, CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+
+        try
+        {
+            var response = await currentContainer.ReadItemAsync<ReservationSlotDocument>(
+                slotId,
+                new PartitionKey(serviceOfferId),
+                cancellationToken: cancellationToken);
+
+            var slot = response.Resource;
+            return new ReservationSlotDto(
+                slot.id,
+                slot.ServiceOfferId,
+                slot.StartUtc,
+                slot.EndUtc,
+                slot.Capacity,
+                slot.ReservedCount,
+                slot.Status,
+                response.ETag);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    public async Task<IReadOnlyList<ServiceOfferDto>> GetServiceOffersAsync(CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+        var query = new QueryDefinition(
+            "SELECT * FROM c WHERE c.Type = @type")
+            .WithParameter("@type", CosmosDocumentTypes.ServiceOffer);
+
+        var results = await ReadAllAsync<ServiceOfferDocument, ServiceOfferDto>(currentContainer, query, document => new ServiceOfferDto(
+            document.id,
+            document.Title,
+            document.Description,
+            document.BasePrice,
+            document.ImageUrls,
+            document.Active), cancellationToken);
+
+        return results.OrderBy(x => x.Title).ToArray();
+    }
+
     public async Task<IReadOnlyList<ServiceOfferDto>> GetActiveServiceOffersAsync(CancellationToken cancellationToken)
     {
         var currentContainer = await GetContainerAsync(cancellationToken);
@@ -71,39 +132,11 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
 
     public async Task<CreateReservationResultDto> CreateReservationAsync(CreateReservationRequestDto request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.ServiceOfferId) ||
-            string.IsNullOrWhiteSpace(request.SlotId) ||
-            string.IsNullOrWhiteSpace(request.SlotEtag) ||
-            string.IsNullOrWhiteSpace(request.CustomerName) ||
-            string.IsNullOrWhiteSpace(request.CustomerEmail))
-        {
-            return new CreateReservationResultDto(
-                false,
-                ReservationCreateOutcome.ValidationFailed,
-                null,
-                "Required fields are missing.",
-                null);
-        }
-
         var currentContainer = await GetContainerAsync(cancellationToken);
-
-        ItemResponse<ReservationSlotDocument> slotResponse;
-        try
-        {
-            slotResponse = await currentContainer.ReadItemAsync<ReservationSlotDocument>(
-                request.SlotId,
-                new PartitionKey(request.ServiceOfferId),
-                cancellationToken: cancellationToken);
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-            return new CreateReservationResultDto(
-                false,
-                ReservationCreateOutcome.ValidationFailed,
-                null,
-                "Selected slot does not exist.",
-                null);
-        }
+        var slotResponse = await currentContainer.ReadItemAsync<ReservationSlotDocument>(
+            request.SlotId,
+            new PartitionKey(request.ServiceOfferId),
+            cancellationToken: cancellationToken);
 
         var slot = slotResponse.Resource;
         if (!string.Equals(slotResponse.ETag, request.SlotEtag, StringComparison.Ordinal))
@@ -276,6 +309,26 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
         finally
         {
             initializationLock.Release();
+        }
+    }
+
+    private static async Task<ServiceOfferDocument?> TryGetServiceOfferAsync(
+        Container currentContainer,
+        string serviceOfferId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await currentContainer.ReadItemAsync<ServiceOfferDocument>(
+                serviceOfferId,
+                new PartitionKey(serviceOfferId),
+                cancellationToken: cancellationToken);
+
+            return response.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
         }
     }
 

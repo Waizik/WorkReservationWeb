@@ -17,6 +17,34 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
         SeedIfEmpty();
     }
 
+    public Task<ServiceOfferDto?> GetServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken)
+    {
+        return Task.FromResult(serviceOffers.TryGetValue(serviceOfferId, out var serviceOffer)
+            ? ToDto(serviceOffer)
+            : null);
+    }
+
+    public Task<ReservationSlotDto?> GetReservationSlotAsync(string serviceOfferId, string slotId, CancellationToken cancellationToken)
+    {
+        if (!slots.TryGetValue(slotId, out var slot) || !string.Equals(slot.ServiceOfferId, serviceOfferId, StringComparison.Ordinal))
+        {
+            return Task.FromResult<ReservationSlotDto?>(null);
+        }
+
+        return Task.FromResult<ReservationSlotDto?>(ToDto(slot));
+    }
+
+    public Task<IReadOnlyList<ServiceOfferDto>> GetServiceOffersAsync(CancellationToken cancellationToken)
+    {
+        var result = serviceOffers
+            .Values
+            .OrderBy(x => x.Title)
+            .Select(ToDto)
+            .ToArray();
+
+        return Task.FromResult<IReadOnlyList<ServiceOfferDto>>(result);
+    }
+
     public Task<IReadOnlyList<ServiceOfferDto>> GetActiveServiceOffersAsync(CancellationToken cancellationToken)
     {
         var result = serviceOffers
@@ -46,31 +74,9 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
 
     public Task<CreateReservationResultDto> CreateReservationAsync(CreateReservationRequestDto request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.ServiceOfferId) ||
-            string.IsNullOrWhiteSpace(request.SlotId) ||
-            string.IsNullOrWhiteSpace(request.SlotEtag) ||
-            string.IsNullOrWhiteSpace(request.CustomerName) ||
-            string.IsNullOrWhiteSpace(request.CustomerEmail))
-        {
-            return Task.FromResult(new CreateReservationResultDto(
-                false,
-                ReservationCreateOutcome.ValidationFailed,
-                null,
-                "Required fields are missing.",
-                null));
-        }
-
         lock (sync)
         {
-            if (!slots.TryGetValue(request.SlotId, out var slot) || slot.ServiceOfferId != request.ServiceOfferId)
-            {
-                return Task.FromResult(new CreateReservationResultDto(
-                    false,
-                    ReservationCreateOutcome.ValidationFailed,
-                    null,
-                    "Selected slot does not exist.",
-                    null));
-            }
+            var slot = slots[request.SlotId];
 
             if (!string.Equals(slot.Etag, request.SlotEtag, StringComparison.Ordinal))
             {

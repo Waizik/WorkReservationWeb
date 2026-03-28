@@ -118,6 +118,104 @@ public class ReservationFlowIntegrationTests
         Assert.Equal("Confirmed", reservation.Status);
     }
 
+    [Fact]
+    public async Task InactiveServiceOffer_IsVisibleToAdminButHiddenFromPublicBooking()
+    {
+        var service = new InMemoryReservationPlatformService();
+        var serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var serviceProvider = new ServiceCollection()
+            .AddOptions()
+            .AddSingleton(serializerOptions)
+            .Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer(serializerOptions))
+            .BuildServiceProvider();
+        var functionContext = new TestFunctionContext(serviceProvider);
+
+        var getServicesFunction = new GetActiveServiceOffersFunction(service);
+        var getManagementServicesFunction = new GetServiceOffersFunction(service);
+        var getSlotsFunction = new GetAvailableSlotsFunction(service);
+        var createReservationFunction = new CreateReservationFunction(service);
+        var upsertServiceOfferFunction = new UpsertServiceOfferFunction(service);
+
+        var deactivatePayload = new UpsertServiceOfferRequestDto(
+            "srv_consultation",
+            "Consultation",
+            "Initial consultation meeting.",
+            49m,
+            ["https://example.invalid/images/consultation.jpg"],
+            false);
+
+        var upsertRequest = new TestHttpRequestData(
+            functionContext,
+            "POST",
+            new Uri("https://localhost/api/management/services"),
+            JsonSerializer.Serialize(deactivatePayload, serializerOptions));
+        upsertRequest.Headers.Add("x-ms-client-principal", TestStaticWebAppsPrincipalFactory.CreateHeaderValue("authenticated", "admin"));
+
+        var upsertResponse = await upsertServiceOfferFunction.Run(upsertRequest, CancellationToken.None);
+        var updatedServiceOffer = await DeserializeResponseAsync<ServiceOfferDto>(upsertResponse, serializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, upsertResponse.StatusCode);
+        Assert.False(updatedServiceOffer.Active);
+
+        var publicServicesRequest = new TestHttpRequestData(
+            functionContext,
+            "GET",
+            new Uri("https://localhost/api/public/services"));
+
+        var publicServicesResponse = await getServicesFunction.Run(publicServicesRequest, CancellationToken.None);
+        var publicServiceOffers = await DeserializeResponseAsync<List<ServiceOfferDto>>(publicServicesResponse, serializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, publicServicesResponse.StatusCode);
+        Assert.Empty(publicServiceOffers);
+
+        var managementServicesRequest = new TestHttpRequestData(
+            functionContext,
+            "GET",
+            new Uri("https://localhost/api/management/services"));
+        managementServicesRequest.Headers.Add("x-ms-client-principal", TestStaticWebAppsPrincipalFactory.CreateHeaderValue("authenticated", "admin"));
+
+        var managementServicesResponse = await getManagementServicesFunction.Run(managementServicesRequest, CancellationToken.None);
+        var managementServiceOffers = await DeserializeResponseAsync<List<ServiceOfferDto>>(managementServicesResponse, serializerOptions);
+
+        var managementOffer = Assert.Single(managementServiceOffers);
+        Assert.Equal(HttpStatusCode.OK, managementServicesResponse.StatusCode);
+        Assert.Equal("srv_consultation", managementOffer.Id);
+        Assert.False(managementOffer.Active);
+
+        var getSlotsRequest = new TestHttpRequestData(
+            functionContext,
+            "GET",
+            new Uri("https://localhost/api/public/services/srv_consultation/slots"));
+
+        var slotsResponse = await getSlotsFunction.Run(getSlotsRequest, "srv_consultation", CancellationToken.None);
+        var slots = await DeserializeResponseAsync<List<ReservationSlotDto>>(slotsResponse, serializerOptions);
+
+        Assert.Equal(HttpStatusCode.OK, slotsResponse.StatusCode);
+        Assert.Empty(slots);
+
+        var createRequestPayload = new CreateReservationRequestDto(
+            "srv_consultation",
+            "slot_202603160800",
+            "ignored-etag",
+            "Inactive User",
+            "inactive@example.com",
+            null);
+
+        var createReservationRequest = new TestHttpRequestData(
+            functionContext,
+            "POST",
+            new Uri("https://localhost/api/public/reservations"),
+            JsonSerializer.Serialize(createRequestPayload, serializerOptions));
+
+        var createReservationResponse = await createReservationFunction.Run(createReservationRequest, CancellationToken.None);
+        var createReservationResult = await DeserializeResponseAsync<CreateReservationResultDto>(createReservationResponse, serializerOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, createReservationResponse.StatusCode);
+        Assert.False(createReservationResult.Success);
+        Assert.Equal(ReservationCreateOutcome.ValidationFailed, createReservationResult.Outcome);
+        Assert.Equal("Selected service is not available.", createReservationResult.Message);
+    }
+
     private static async Task<T> DeserializeResponseAsync<T>(HttpResponseData response, JsonSerializerOptions serializerOptions)
     {
         response.Body.Position = 0;

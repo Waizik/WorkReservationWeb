@@ -1,7 +1,6 @@
 @page "/admin"
 @attribute [Authorize(Roles = "admin")]
 @inject WorkReservationWeb.Web.Services.ReservationAdminApiClient AdminApiClient
-@inject WorkReservationWeb.Web.Services.ReservationPublicApiClient PublicApiClient
 @using WorkReservationWeb.Shared.Contracts
 
 <PageTitle>Admin</PageTitle>
@@ -65,6 +64,10 @@
 
 	<div class="d-flex gap-2">
 		<button class="btn btn-primary" @onclick="SaveServiceOfferAsync" disabled="@isSavingServiceOffer">Save service offer</button>
+		@if (!string.IsNullOrWhiteSpace(selectedServiceOfferId))
+		{
+			<button class="btn btn-outline-warning" @onclick="ToggleSelectedServiceOfferStatusAsync" disabled="@isSavingServiceOffer">@(serviceActive ? "Deactivate" : "Activate")</button>
+		}
 		<button class="btn btn-outline-secondary" @onclick="ResetServiceOfferForm">Clear form</button>
 	</div>
 
@@ -121,7 +124,12 @@
 						<td>@(serviceOffer.Active ? "Active" : "Inactive")</td>
 						<td>@serviceOffer.ImageUrls.Count</td>
 						<td>
-							<button class="btn btn-sm btn-outline-primary" @onclick="() => EditServiceOffer(serviceOffer)">Edit</button>
+							<div class="d-flex gap-2">
+								<button class="btn btn-sm btn-outline-primary" @onclick="() => EditServiceOffer(serviceOffer)">Edit</button>
+								<button class="btn btn-sm @(serviceOffer.Active ? "btn-outline-warning" : "btn-outline-success")" @onclick="() => ToggleServiceOfferStatusAsync(serviceOffer)">
+									@(serviceOffer.Active ? "Deactivate" : "Activate")
+								</button>
+							</div>
 						</td>
 					</tr>
 				}
@@ -212,7 +220,7 @@
 
 		try
 		{
-			var loadedServiceOffers = await PublicApiClient.GetServicesAsync(CancellationToken.None);
+			var loadedServiceOffers = await AdminApiClient.GetServiceOffersAsync(CancellationToken.None);
 			serviceOffers.Clear();
 			serviceOffers.AddRange(loadedServiceOffers.OrderBy(serviceOffer => serviceOffer.Title, StringComparer.OrdinalIgnoreCase));
 
@@ -300,6 +308,60 @@
 		{
 			serviceOfferMessageClass = "text-danger";
 			serviceOfferMessage = "Failed to save service offer.";
+		}
+		finally
+		{
+			isSavingServiceOffer = false;
+		}
+	}
+
+	private async Task ToggleSelectedServiceOfferStatusAsync()
+	{
+		if (string.IsNullOrWhiteSpace(selectedServiceOfferId))
+		{
+			return;
+		}
+
+		var selectedServiceOffer = serviceOffers.FirstOrDefault(serviceOffer => serviceOffer.Id == selectedServiceOfferId);
+		if (selectedServiceOffer is null)
+		{
+			return;
+		}
+
+		await ToggleServiceOfferStatusAsync(selectedServiceOffer);
+	}
+
+	private async Task ToggleServiceOfferStatusAsync(ServiceOfferDto serviceOffer)
+	{
+		serviceOfferMessage = null;
+		isSavingServiceOffer = true;
+
+		try
+		{
+			lastSavedServiceOffer = await AdminApiClient.UpsertServiceOfferAsync(
+				new UpsertServiceOfferRequestDto(
+					serviceOffer.Id,
+					serviceOffer.Title,
+					serviceOffer.Description,
+					serviceOffer.BasePrice,
+					serviceOffer.ImageUrls,
+					!serviceOffer.Active),
+				CancellationToken.None);
+
+			if (lastSavedServiceOffer is not null)
+			{
+				selectedServiceOfferId = lastSavedServiceOffer.Id;
+				PopulateServiceOfferForm(lastSavedServiceOffer);
+			}
+
+			await LoadServiceOffersAsync();
+			serviceOfferMessageClass = "text-success";
+			serviceOfferMessage = serviceOffer.Active ? "Service offer deactivated." : "Service offer activated.";
+		}
+		catch
+		{
+			serviceOfferMessageClass = "text-danger";
+			serviceOfferMessage = serviceOffer.Active ? "Failed to deactivate service offer." : "Failed to activate service offer.";
 		}
 		finally
 		{
