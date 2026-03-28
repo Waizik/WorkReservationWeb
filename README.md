@@ -26,6 +26,7 @@ Initial implementation bootstrap is complete:
 - Browser end-to-end coverage now exercises the localhost booking flow and admin service-offer management flow with Playwright.
 - Service-offer images can now be uploaded through the admin UI, stored in Azure Blob Storage when configured or local file storage otherwise, and served through a public asset endpoint.
 - Reservation booking now sends confirmation notifications, and due reminder notifications can be processed both from the admin flow and from a scheduled Azure Function with Azure Communication Services or a local file fallback.
+- Important backend behaviors now emit structured logs for reservation creation outcomes, reminder processing, service-offer mutations, and admin image uploads.
 
 ## Solution structure
 
@@ -196,5 +197,4 @@ The Cosmos test creates a unique database for each run and deletes it during cle
 
 ## Next implementation steps
 
-- Add logs for important behaviour.
 - Add CI/CD workflows for build/test/deploy.
