@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using WorkReservationWeb.Domain.Entities;
+using WorkReservationWeb.Infrastructure.Cosmos;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Infrastructure.Services;

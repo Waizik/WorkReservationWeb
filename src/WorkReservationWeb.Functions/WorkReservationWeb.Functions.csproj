@@ -21,7 +21,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WorkReservationWeb.Shared\WorkReservationWeb.Shared.csproj" />
-    <ProjectReference Include="..\WorkReservationWeb.Domain\WorkReservationWeb.Domain.csproj" />
     <ProjectReference Include="..\WorkReservationWeb.Infrastructure\WorkReservationWeb.Infrastructure.csproj" />
   </ItemGroup>
 

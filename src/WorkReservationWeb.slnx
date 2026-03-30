@@ -2,7 +2,6 @@
   <Project Path="../tests/WorkReservationWeb.Browser.Tests/WorkReservationWeb.Browser.Tests.csproj" />
   <Project Path="../tests/WorkReservationWeb.Functions.Tests/WorkReservationWeb.Functions.Tests.csproj" />
   <Project Path="../tests/WorkReservationWeb.Integration.Tests/WorkReservationWeb.Integration.Tests.csproj" />
-  <Project Path="WorkReservationWeb.Domain/WorkReservationWeb.Domain.csproj" />
   <Project Path="WorkReservationWeb.Functions/WorkReservationWeb.Functions.csproj" />
   <Project Path="WorkReservationWeb.Infrastructure/WorkReservationWeb.Infrastructure.csproj" />
   <Project Path="WorkReservationWeb.Shared/WorkReservationWeb.Shared.csproj" />

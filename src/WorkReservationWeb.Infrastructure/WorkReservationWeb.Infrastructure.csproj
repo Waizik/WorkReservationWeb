@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\WorkReservationWeb.Domain\WorkReservationWeb.Domain.csproj" />
     <ProjectReference Include="..\WorkReservationWeb.Shared\WorkReservationWeb.Shared.csproj" />
   </ItemGroup>
 

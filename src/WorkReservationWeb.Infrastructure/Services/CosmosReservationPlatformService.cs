@@ -1,5 +1,4 @@
 using Microsoft.Azure.Cosmos;
-using WorkReservationWeb.Domain.Entities;
 using WorkReservationWeb.Infrastructure.Cosmos;
 using WorkReservationWeb.Shared.Contracts;
 
