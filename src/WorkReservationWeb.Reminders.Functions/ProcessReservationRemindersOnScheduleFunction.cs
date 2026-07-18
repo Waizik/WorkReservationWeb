@@ -1,8 +1,9 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Extensions.Timer;
 using Microsoft.Extensions.Logging;
+using WorkReservationWeb.Infrastructure.Notifications;
 
-namespace WorkReservationWeb.Functions.Admin;
+namespace WorkReservationWeb.Reminders.Functions;
 
 public sealed class ProcessReservationRemindersOnScheduleFunction(
     ReservationReminderProcessor reminderProcessor,

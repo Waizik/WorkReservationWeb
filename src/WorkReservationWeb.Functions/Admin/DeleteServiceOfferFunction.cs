@@ -27,7 +27,7 @@ public sealed class DeleteServiceOfferFunction(
 
         if (string.IsNullOrWhiteSpace(serviceOfferId))
         {
-            logger?.LogInformation("Service offer deletion rejected because the id was missing.");
+            logger?.LogDebug("Service offer deletion rejected because the id was missing.");
             var badRequest = request.CreateResponse(System.Net.HttpStatusCode.BadRequest);
             await badRequest.WriteAsJsonAsync(new ApiErrorDto("invalid_service_offer_id", "Service offer id is required."), cancellationToken);
             return badRequest;
@@ -36,7 +36,7 @@ public sealed class DeleteServiceOfferFunction(
         var existingServiceOffer = await reservationPlatformService.GetServiceOfferAsync(serviceOfferId, cancellationToken);
         if (existingServiceOffer is null)
         {
-            logger?.LogInformation("Service offer deletion skipped because service offer {ServiceOfferId} was not found.", serviceOfferId);
+            logger?.LogDebug("Service offer deletion skipped because service offer {ServiceOfferId} was not found.", serviceOfferId);
             var notFound = request.CreateResponse(System.Net.HttpStatusCode.NotFound);
             await notFound.WriteAsJsonAsync(new ApiErrorDto("service_offer_not_found", "Service offer was not found."), cancellationToken);
             return notFound;
@@ -45,13 +45,13 @@ public sealed class DeleteServiceOfferFunction(
         var deleted = await reservationPlatformService.DeleteServiceOfferAsync(serviceOfferId, cancellationToken);
         if (!deleted)
         {
-            logger?.LogInformation("Service offer {ServiceOfferId} could not be deleted because it is still in use.", serviceOfferId);
+            logger?.LogDebug("Service offer {ServiceOfferId} could not be deleted because it is still in use.", serviceOfferId);
             var conflict = request.CreateResponse(System.Net.HttpStatusCode.Conflict);
             await conflict.WriteAsJsonAsync(new ApiErrorDto("service_offer_in_use", "Service offer cannot be deleted while slots or reservations exist."), cancellationToken);
             return conflict;
         }
 
-        logger?.LogInformation("Service offer {ServiceOfferId} deleted.", serviceOfferId);
+        logger?.LogDebug("Service offer {ServiceOfferId} deleted.", serviceOfferId);
 
         return request.CreateResponse(System.Net.HttpStatusCode.NoContent);
     }

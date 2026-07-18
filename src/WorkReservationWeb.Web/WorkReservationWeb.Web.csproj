@@ -17,4 +17,9 @@
     <ProjectReference Include="..\WorkReservationWeb.Shared\WorkReservationWeb.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The development principal grants the admin role without SWA in front; keep it out of the production bundle. -->
+    <Content Update="wwwroot\appsettings.Development.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
 </Project>

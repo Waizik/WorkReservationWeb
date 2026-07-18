@@ -1,12 +1,15 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Logging;
 using WorkReservationWeb.Functions.Security;
 using WorkReservationWeb.Infrastructure.Services;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Functions.Admin;
 
-public sealed class GetServiceOffersFunction(IReservationPlatformService reservationPlatformService)
+public sealed class GetServiceOffersFunction(
+    IReservationPlatformService reservationPlatformService,
+    ILogger<GetServiceOffersFunction>? logger = null)
 {
     [Function("AdminGetServiceOffers")]
     public async Task<HttpResponseData> Run(
@@ -15,6 +18,7 @@ public sealed class GetServiceOffersFunction(IReservationPlatformService reserva
     {
         if (!AdminAuthorization.IsAuthorized(request))
         {
+            logger?.LogWarning("Unauthorized attempt to list service offers.");
             var unauthorized = request.CreateResponse(System.Net.HttpStatusCode.Unauthorized);
             await unauthorized.WriteAsJsonAsync(new ApiErrorDto("unauthorized", "Admin authentication required."), cancellationToken);
             return unauthorized;

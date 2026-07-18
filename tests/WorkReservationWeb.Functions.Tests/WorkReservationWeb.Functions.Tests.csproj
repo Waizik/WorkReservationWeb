@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\WorkReservationWeb.Functions\WorkReservationWeb.Functions.csproj" />
+    <ProjectReference Include="..\..\src\WorkReservationWeb.Reminders.Functions\WorkReservationWeb.Reminders.Functions.csproj" />
     <ProjectReference Include="..\..\src\WorkReservationWeb.Shared\WorkReservationWeb.Shared.csproj" />
   </ItemGroup>
 

@@ -4,6 +4,7 @@
   <Project Path="../tests/WorkReservationWeb.Integration.Tests/WorkReservationWeb.Integration.Tests.csproj" />
   <Project Path="WorkReservationWeb.Functions/WorkReservationWeb.Functions.csproj" />
   <Project Path="WorkReservationWeb.Infrastructure/WorkReservationWeb.Infrastructure.csproj" />
+  <Project Path="WorkReservationWeb.Reminders.Functions/WorkReservationWeb.Reminders.Functions.csproj" />
   <Project Path="WorkReservationWeb.Shared/WorkReservationWeb.Shared.csproj" />
   <Project Path="WorkReservationWeb.Web/WorkReservationWeb.Web.csproj" />
 </Solution>

@@ -32,7 +32,7 @@ public sealed class CreateReservationFunction(
             string.IsNullOrWhiteSpace(payload.CustomerName) ||
             string.IsNullOrWhiteSpace(payload.CustomerEmail))
         {
-            logger?.LogInformation(
+            logger?.LogDebug(
                 "Reservation creation validation failed for service offer {ServiceOfferId} and slot {SlotId} because required fields were missing.",
                 payload.ServiceOfferId,
                 payload.SlotId);
@@ -51,7 +51,7 @@ public sealed class CreateReservationFunction(
         var serviceOffer = await reservationPlatformService.GetServiceOfferAsync(payload.ServiceOfferId, cancellationToken);
         if (serviceOffer is null || !serviceOffer.Active)
         {
-            logger?.LogInformation(
+            logger?.LogDebug(
                 "Reservation creation validation failed because service offer {ServiceOfferId} was unavailable or inactive.",
                 payload.ServiceOfferId);
             var badRequest = request.CreateResponse(System.Net.HttpStatusCode.BadRequest);
@@ -69,7 +69,7 @@ public sealed class CreateReservationFunction(
         var slot = await reservationPlatformService.GetReservationSlotAsync(payload.ServiceOfferId, payload.SlotId, cancellationToken);
         if (slot is null)
         {
-            logger?.LogInformation(
+            logger?.LogDebug(
                 "Reservation creation validation failed because slot {SlotId} on service offer {ServiceOfferId} did not exist.",
                 payload.SlotId,
                 payload.ServiceOfferId);
@@ -87,7 +87,7 @@ public sealed class CreateReservationFunction(
 
         if (!string.Equals(slot.Etag, payload.SlotEtag, StringComparison.Ordinal))
         {
-            logger?.LogInformation(
+            logger?.LogDebug(
                 "Reservation creation conflicted for service offer {ServiceOfferId} slot {SlotId} because the slot etag changed.",
                 payload.ServiceOfferId,
                 payload.SlotId);
@@ -105,7 +105,7 @@ public sealed class CreateReservationFunction(
 
         if (!string.Equals(slot.Status, ReservationSlotStatus.Available, StringComparison.Ordinal) || slot.ReservedCount >= slot.Capacity)
         {
-            logger?.LogInformation(
+            logger?.LogDebug(
                 "Reservation creation conflicted for service offer {ServiceOfferId} slot {SlotId} because the slot was no longer available.",
                 payload.ServiceOfferId,
                 payload.SlotId);
@@ -151,7 +151,7 @@ public sealed class CreateReservationFunction(
                 var sentAtUtc = DateTimeOffset.UtcNow;
                 await notificationService.SendReservationConfirmationAsync(confirmationContext, cancellationToken);
                 await reservationPlatformService.MarkReservationConfirmationSentAsync(result.ReservationId, sentAtUtc, cancellationToken);
-                logger?.LogInformation("Reservation confirmation notification sent for reservation {ReservationId}.", result.ReservationId);
+                logger?.LogDebug("Reservation confirmation notification sent for reservation {ReservationId}.", result.ReservationId);
             }
             catch (Exception ex)
             {

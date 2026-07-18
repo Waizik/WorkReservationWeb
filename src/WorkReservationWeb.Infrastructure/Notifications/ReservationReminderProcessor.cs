@@ -1,9 +1,8 @@
 using Microsoft.Extensions.Logging;
-using WorkReservationWeb.Infrastructure.Notifications;
 using WorkReservationWeb.Infrastructure.Services;
 using WorkReservationWeb.Shared.Contracts;
 
-namespace WorkReservationWeb.Functions.Admin;
+namespace WorkReservationWeb.Infrastructure.Notifications;
 
 public sealed class ReservationReminderProcessor(
     IReservationPlatformService reservationPlatformService,
@@ -35,7 +34,7 @@ public sealed class ReservationReminderProcessor(
             }
         }
 
-        logger.LogInformation(
+        logger.LogDebug(
             "Processed {ProcessedCount} reminder candidates. Sent {SentCount}, failed {FailedCount}.",
             dueReservations.Count,
             sentCount,

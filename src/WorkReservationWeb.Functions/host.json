@@ -1,12 +1,18 @@
 {
     "version": "2.0",
     "logging": {
+        "logLevel": {
+            "default": "Warning",
+            "Host.Results": "Warning",
+            "Function": "Warning",
+            "WorkReservationWeb": "Warning"
+        },
         "applicationInsights": {
             "samplingSettings": {
                 "isEnabled": true,
-                "excludedTypes": "Request"
+                "maxTelemetryItemsPerSecond": 1
             },
-            "enableLiveMetricsFilters": true
+            "enableLiveMetricsFilters": false
         }
     }
 }

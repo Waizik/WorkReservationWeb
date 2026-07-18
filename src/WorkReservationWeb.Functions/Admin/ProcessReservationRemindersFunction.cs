@@ -2,6 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using WorkReservationWeb.Functions.Security;
+using WorkReservationWeb.Infrastructure.Notifications;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Functions.Admin;
@@ -23,7 +24,7 @@ public sealed class ProcessReservationRemindersFunction(
             return unauthorized;
         }
 
-        logger?.LogInformation("Manual reservation reminder processing requested.");
+        logger?.LogDebug("Manual reservation reminder processing requested.");
         var result = await reminderProcessor.ProcessDueRemindersAsync(cancellationToken);
 
         logger?.LogInformation(

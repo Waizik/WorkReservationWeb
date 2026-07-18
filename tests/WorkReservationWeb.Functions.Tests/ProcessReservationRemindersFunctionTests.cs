@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using WorkReservationWeb.Functions.Admin;
 using WorkReservationWeb.Infrastructure.Notifications;
 using WorkReservationWeb.Infrastructure.Services;
+using WorkReservationWeb.Reminders.Functions;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Functions.Tests;

@@ -11,7 +11,7 @@ Admins maintain the service catalog and review reservations, while customers bro
 
 Initial implementation bootstrap is complete:
 
-- .NET 10 mono-repo solution scaffolded.
+- Mono-repo solution scaffolded (SDK pinned to .NET 10; backend projects target .NET 9 for Static Web Apps compatibility, see below).
 - Blazor WebAssembly frontend project created.
 - Azure Functions backend project created.
 - Shared contracts, domain entities, and infrastructure service layer created.
@@ -33,12 +33,23 @@ Initial implementation bootstrap is complete:
 - src/WorkReservationWeb.slnx
 - src/WorkReservationWeb.Web
 - src/WorkReservationWeb.Functions
+- src/WorkReservationWeb.Reminders.Functions
 - src/WorkReservationWeb.Shared
-- src/WorkReservationWeb.Domain
 - src/WorkReservationWeb.Infrastructure
 - tests/WorkReservationWeb.Functions.Tests
 - tests/WorkReservationWeb.Integration.Tests
 - tests/WorkReservationWeb.Browser.Tests
+- infra/main.bicep
+
+## Target frameworks
+
+Azure Static Web Apps managed functions currently support at most `dotnet-isolated:9.0`, so the API and everything it references target .NET 9, while the Blazor WebAssembly frontend ships as static files and can stay on .NET 10:
+
+- `WorkReservationWeb.Functions`, `WorkReservationWeb.Reminders.Functions`, `WorkReservationWeb.Infrastructure`, `WorkReservationWeb.Shared`: `net9.0`.
+- `WorkReservationWeb.Web` and the test projects: `net10.0`.
+
+The Functions executables set `RollForward=LatestMajor`, so local runs work with only the .NET 10 SDK installed.
+The managed API runtime is pinned in `src/WorkReservationWeb.Web/wwwroot/staticwebapp.config.json` via `platform.apiRuntime = dotnet-isolated:9.0`, which must match the Functions project `TargetFramework`. Once Static Web Apps add `dotnet-isolated:10.0`, bump both together.
 
 ## API routes currently available
 
@@ -56,6 +67,8 @@ Admin (requires SWA principal header in this skeleton):
 - POST /api/management/services
 
 Admin endpoints now require an `x-ms-client-principal` header containing a valid Azure Static Web Apps client principal with the `admin` role.
+
+In production, `staticwebapp.config.json` additionally protects `/admin` and `/api/management/*` at the Static Web Apps edge with `allowedRoles: ["admin"]`, rewrites unknown URLs to `index.html` for Blazor deep links, and redirects unauthenticated requests to the Entra ID login. The `admin` role is a custom SWA role: after deployment, assign it to users through the Static Web App resource in the Azure portal under Role management (invitations).
 
 ## Booking conflict behavior in current skeleton
 
@@ -81,6 +94,8 @@ Prerequisites:
 
 - .NET SDK 10
 - Azure Functions Core Tools v4 (for local Functions runtime)
+
+The repository pins the .NET SDK in `global.json`; GitHub Actions and local `dotnet` commands use that file as the SDK source of truth.
 
 Build everything:
 
@@ -170,6 +185,8 @@ This setting is required for startup. The Functions host now validates `Reservat
 
 After deployment, update the Azure Function App application setting `ReservationReminderSchedule` as well. `local.settings.json` is only used for local development and is not deployed to Azure.
 
+Azure application settings cannot contain `:` in their names, so the deployed settings use the double-underscore form (`CosmosDb__ConnectionString`, `BlobStorage__ContainerName`, ...), which .NET configuration maps back to the `:` hierarchy. The `:` form shown above applies only to `local.settings.json`.
+
 The admin UI button remains available as a manual retry or override path even when the scheduled Function is enabled.
 
 Run tests:
@@ -195,6 +212,80 @@ dotnet test tests/WorkReservationWeb.Integration.Tests/WorkReservationWeb.Integr
 
 The Cosmos test creates a unique database for each run and deletes it during cleanup.
 
-## Next implementation steps
+## CI/CD
 
-- Add CI/CD workflows for build/test/deploy.
+A step-by-step deployment guide (in Czech) is available in [docs/nasazeni-do-azure.md](docs/nasazeni-do-azure.md).
+
+GitHub Actions workflows live under `.github/workflows`.
+
+- `ci.yml` runs on pull requests and branch pushes. It restores, builds, installs Playwright Chromium, and runs the full solution test suite in Release configuration.
+- `cd.yml` runs on pushes to `main` and can also be started manually with `workflow_dispatch`. It performs the same validation, deploys Azure infrastructure from `infra/main.bicep`, publishes the Blazor WebAssembly app, publishes the HTTP Functions API as the managed Static Web Apps API, and deploys the scheduled reminder Function to a separate Azure Function App.
+
+The production deployment keeps Azure Static Web Apps on the Free SKU. The HTTP API remains the managed Static Web Apps API so browser calls to `/api/...` keep working without a Standard linked backend. The scheduled reminder runs in a separate Function App because managed Static Web Apps APIs only support HTTP-triggered Functions.
+
+Configure GitHub Actions OIDC before enabling deployment:
+
+- Secret `AZURE_CLIENT_ID`: application/client ID of the federated Azure service principal.
+- Secret `AZURE_TENANT_ID`: Azure tenant ID.
+- Secret `AZURE_SUBSCRIPTION_ID`: Azure subscription ID.
+- Variable `AZURE_RESOURCE_GROUP`: resource group name, defaults to `rg-workreservationweb`.
+- Variable `AZURE_LOCATION`: Azure region, defaults to `westeurope`.
+- Variable `AZURE_ENVIRONMENT_NAME`: short lowercase name used for Azure resource names, defaults to `workreservationweb`.
+- Variable `RESERVATION_REMINDER_SCHEDULE`: NCRONTAB reminder schedule, defaults to `0 0 0 * * *`.
+- Optional secret `COMMUNICATION_SERVICES_CONNECTION_STRING`: Azure Communication Services connection string.
+- Optional variable `COMMUNICATION_SERVICES_SENDER_ADDRESS`: sender address for Azure Communication Services Email.
+
+The workflow reads the Static Web Apps deployment token from Azure after Bicep creates or updates the Static Web Apps resource, so the old `AZURE_STATIC_WEB_APPS_API_TOKEN` secret is not required for this Bicep-based deployment.
+
+## Azure infrastructure
+
+The Bicep template provisions these production resources:
+
+- Azure Static Web Apps with `Free` SKU.
+- A standalone reminder Azure Function App on the Azure Functions Consumption plan.
+- A Standard LRS storage account for the Functions runtime and service-offer image blobs.
+- A private blob container named `service-offer-images` by default.
+- A Cosmos DB account with free tier enabled by default, database `WorkReservationWeb`, and container `Reservations` partitioned by `/partitionKey`.
+- A shared Application Insights resource for Functions telemetry.
+
+Deploy the infrastructure manually from an authenticated Azure CLI session:
+
+```powershell
+az group create --name rg-workreservationweb --location westeurope
+az deployment group create `
+  --resource-group rg-workreservationweb `
+  --template-file infra/main.bicep `
+  --parameters environmentName=workreservationweb location=westeurope
+```
+
+The template writes the required reminder Function App settings for Cosmos DB, Application Insights, and `ReservationReminderSchedule`. The CD workflow also writes the managed Static Web Apps API settings for Cosmos DB, Blob Storage, Application Insights, and optional Communication Services after infrastructure deployment.
+
+The Cosmos DB free tier can only be enabled on one Cosmos DB account per Azure subscription. If your subscription already has a free-tier Cosmos account, deploy with `enableCosmosFreeTier=false` or use the existing free-tier account instead.
+
+## Azure pricing notes
+
+Short answer: Azure Static Web Apps is in the Free plan, but the scheduled reminder is not part of that Free SWA allowance.
+
+Azure Static Web Apps Free can host this Blazor WebAssembly frontend and the HTTP-triggered managed API. That managed API feature is limited to HTTP triggers, so the daily `TimerTrigger` reminder cannot run inside the Free SWA managed API. To keep SWA Free, this repository deploys only the scheduled reminder to a separate Azure Function App on the Azure Functions Consumption plan.
+
+Cost components for this deployment:
+
+- Static Web Apps Free plan: no SWA Standard plan charge for the frontend and managed HTTP API.
+- Reminder Azure Function App Consumption plan: has Azure Functions Consumption included grants, then bills for executions, execution time, and related meters beyond those grants.
+- Cosmos DB free tier: the template enables free tier by default and sets database throughput to 400 RU/s. This is intended to fit inside the free-tier allowance when this is the subscription's one free-tier Cosmos account.
+- Storage account: Azure Storage does not have a general free SKU for this use case, so the template uses low-cost Standard LRS storage. It still bills for stored data, transactions, and bandwidth.
+- Application Insights: billed separately for telemetry ingestion and retention beyond any included allowance. The Functions `host.json` files default logs to `Warning`, enable sampling, cap sampling at 1 telemetry item per second, and disable live metrics filters to keep ingestion low.
+- Azure Communication Services Email: billed separately if configured.
+
+Routine validation and success-path logs are emitted at `Debug` or `Information`, so they are not sent to Application Insights with the default `Warning` threshold. Warnings still capture important conditions such as unauthorized admin attempts and notification delivery failures.
+
+To check whether the deployed Static Web App is Free or Standard:
+
+```powershell
+az staticwebapp show `
+  --resource-group rg-workreservationweb `
+  --name <static-web-app-name> `
+  --query sku
+```
+
+The Bicep template sets the Static Web Apps SKU to `Free`. In the Azure portal, the same value appears on the Static Web App resource under its hosting plan or SKU details. The reminder Function App is a separate Azure resource, so it has its own Consumption-plan billing independent of the Static Web Apps Free SKU.

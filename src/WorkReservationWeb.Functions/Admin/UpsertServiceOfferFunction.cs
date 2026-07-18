@@ -27,14 +27,14 @@ public sealed class UpsertServiceOfferFunction(
         var payload = await request.ReadFromJsonAsync<UpsertServiceOfferRequestDto>(cancellationToken);
         if (payload is null || string.IsNullOrWhiteSpace(payload.Title) || string.IsNullOrWhiteSpace(payload.Description))
         {
-            logger?.LogInformation("Service offer upsert rejected because title or description was missing.");
+            logger?.LogDebug("Service offer upsert rejected because title or description was missing.");
             var badRequest = request.CreateResponse(System.Net.HttpStatusCode.BadRequest);
             await badRequest.WriteAsJsonAsync(new ApiErrorDto("invalid_payload", "Title and description are required."), cancellationToken);
             return badRequest;
         }
 
         var result = await reservationPlatformService.UpsertServiceOfferAsync(payload, cancellationToken);
-        logger?.LogInformation(
+        logger?.LogDebug(
             "Service offer {ServiceOfferId} saved. Active: {Active}. ImageCount: {ImageCount}.",
             result.Id,
             result.Active,
