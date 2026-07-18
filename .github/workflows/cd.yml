@@ -1,0 +1,188 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: static-web-apps-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build, test, and deploy
+    runs-on: ubuntu-latest
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      AZURE_ENVIRONMENT_NAME: ${{ vars.AZURE_ENVIRONMENT_NAME || 'workreservationweb' }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'westeurope' }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'rg-workreservationweb' }}
+      COMMUNICATION_SERVICES_CONNECTION_STRING: ${{ secrets.COMMUNICATION_SERVICES_CONNECTION_STRING }}
+      COMMUNICATION_SERVICES_SENDER_ADDRESS: ${{ vars.COMMUNICATION_SERVICES_SENDER_ADDRESS }}
+      RESERVATION_REMINDER_SCHEDULE: ${{ vars.RESERVATION_REMINDER_SCHEDULE || '0 0 0 * * *' }}
+      WEB_PUBLISH_DIR: artifacts/web
+      API_PUBLISH_DIR: artifacts/api
+      REMINDERS_PUBLISH_DIR: artifacts/reminders
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore src/WorkReservationWeb.slnx
+
+      - name: Build
+        run: dotnet build src/WorkReservationWeb.slnx --configuration Release --no-restore
+
+      - name: Install Playwright Chromium
+        shell: pwsh
+        run: tests/WorkReservationWeb.Browser.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: Test
+        run: dotnet test src/WorkReservationWeb.slnx --configuration Release --no-build --logger trx
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure resource group
+        run: az group create --name "$AZURE_RESOURCE_GROUP" --location "$AZURE_LOCATION"
+
+      - name: Deploy Azure infrastructure
+        id: infra
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deployment_name="workreservationweb-${GITHUB_RUN_ID}"
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$deployment_name" \
+            --template-file infra/main.bicep \
+            --parameters \
+              environmentName="$AZURE_ENVIRONMENT_NAME" \
+              location="$AZURE_LOCATION" \
+              reservationReminderSchedule="$RESERVATION_REMINDER_SCHEDULE" \
+              communicationServicesConnectionString="$COMMUNICATION_SERVICES_CONNECTION_STRING" \
+              communicationServicesSenderAddress="$COMMUNICATION_SERVICES_SENDER_ADDRESS"
+
+          function_app_name=$(az deployment group show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$deployment_name" \
+            --query "properties.outputs.functionAppName.value" \
+            --output tsv)
+
+          static_web_app_name=$(az deployment group show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$deployment_name" \
+            --query "properties.outputs.staticWebAppName.value" \
+            --output tsv)
+
+          static_web_app_token=$(az staticwebapp secrets list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$static_web_app_name" \
+            --query "properties.apiKey" \
+            --output tsv)
+
+          cosmos_account_name=$(az deployment group show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$deployment_name" \
+            --query "properties.outputs.cosmosAccountName.value" \
+            --output tsv)
+
+          storage_account_name=$(az deployment group show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$deployment_name" \
+            --query "properties.outputs.storageAccountName.value" \
+            --output tsv)
+
+          blob_container_name=$(az deployment group show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$deployment_name" \
+            --query "properties.outputs.serviceOfferImagesContainerName.value" \
+            --output tsv)
+
+          application_insights_connection_string=$(az deployment group show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$deployment_name" \
+            --query "properties.outputs.applicationInsightsConnectionString.value" \
+            --output tsv)
+
+          cosmos_connection_string=$(az cosmosdb keys list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$cosmos_account_name" \
+            --type connection-strings \
+            --query "connectionStrings[0].connectionString" \
+            --output tsv)
+
+          storage_connection_string=$(az storage account show-connection-string \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$storage_account_name" \
+            --query "connectionString" \
+            --output tsv)
+
+          echo "::add-mask::$cosmos_connection_string"
+          echo "::add-mask::$storage_connection_string"
+          echo "::add-mask::$application_insights_connection_string"
+
+          az staticwebapp appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$static_web_app_name" \
+            --setting-names \
+              "CosmosDb__ConnectionString=$cosmos_connection_string" \
+              "CosmosDb__DatabaseName=WorkReservationWeb" \
+              "CosmosDb__ContainerName=Reservations" \
+              "BlobStorage__ConnectionString=$storage_connection_string" \
+              "BlobStorage__ContainerName=$blob_container_name" \
+              "APPLICATIONINSIGHTS_CONNECTION_STRING=$application_insights_connection_string" \
+              "CommunicationServices__ConnectionString=$COMMUNICATION_SERVICES_CONNECTION_STRING" \
+              "CommunicationServices__SenderAddress=$COMMUNICATION_SERVICES_SENDER_ADDRESS" \
+            --output none
+
+          echo "::add-mask::$static_web_app_token"
+          echo "FUNCTION_APP_NAME=$function_app_name" >> "$GITHUB_ENV"
+          echo "STATIC_WEB_APP_NAME=$static_web_app_name" >> "$GITHUB_ENV"
+          echo "STATIC_WEB_APP_API_TOKEN=$static_web_app_token" >> "$GITHUB_ENV"
+
+      - name: Publish web app
+        run: dotnet publish src/WorkReservationWeb.Web/WorkReservationWeb.Web.csproj --configuration Release --no-restore --output $WEB_PUBLISH_DIR
+
+      - name: Publish Functions API
+        run: dotnet publish src/WorkReservationWeb.Functions/WorkReservationWeb.Functions.csproj --configuration Release --no-restore --output $API_PUBLISH_DIR
+
+      - name: Publish reminder Functions
+        run: dotnet publish src/WorkReservationWeb.Reminders.Functions/WorkReservationWeb.Reminders.Functions.csproj --configuration Release --no-restore --output $REMINDERS_PUBLISH_DIR
+
+      - name: Deploy reminder Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ env.FUNCTION_APP_NAME }}
+          package: ${{ env.REMINDERS_PUBLISH_DIR }}
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ env.STATIC_WEB_APP_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: ${{ env.WEB_PUBLISH_DIR }}/wwwroot
+          api_location: ${{ env.API_PUBLISH_DIR }}
+          output_location: ""
+          skip_app_build: true
+          skip_api_build: true

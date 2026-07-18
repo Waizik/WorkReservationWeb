@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Restore, build, and test
+    runs-on: ubuntu-latest
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore src/WorkReservationWeb.slnx
+
+      - name: Build
+        run: dotnet build src/WorkReservationWeb.slnx --configuration Release --no-restore
+
+      - name: Install Playwright Chromium
+        shell: pwsh
+        run: tests/WorkReservationWeb.Browser.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: Test
+        run: dotnet test src/WorkReservationWeb.slnx --configuration Release --no-build --logger trx
