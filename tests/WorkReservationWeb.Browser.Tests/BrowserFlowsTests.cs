@@ -6,6 +6,7 @@ namespace WorkReservationWeb.Browser.Tests;
 public sealed class BrowserTestCollection : ICollectionFixture<LocalAppHostFixture>;
 
 [Collection(nameof(BrowserTestCollection))]
+[Trait("Category", "E2E")]
 public sealed class BrowserFlowsTests(LocalAppHostFixture hostFixture) : IAsyncLifetime
 {
     private IPlaywright? playwright;

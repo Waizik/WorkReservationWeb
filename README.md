@@ -195,6 +195,12 @@ Run tests:
 dotnet test src/WorkReservationWeb.slnx
 ```
 
+The browser (Playwright) tests are tagged with the `E2E` trait because they launch the real Functions host, which requires Azure Functions Core Tools and a storage emulator. To run only the dependency-free unit and in-process integration tests:
+
+```powershell
+dotnet test src/WorkReservationWeb.slnx --filter "Category!=E2E"
+```
+
 The browser test project starts the local Functions host and the Blazor app automatically, but Playwright Chromium must be installed once before the browser suite or full solution test run:
 
 ```powershell

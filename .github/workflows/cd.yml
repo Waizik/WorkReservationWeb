@@ -47,12 +47,8 @@ jobs:
       - name: Build
         run: dotnet build src/WorkReservationWeb.slnx --configuration Release --no-restore
 
-      - name: Install Playwright Chromium
-        shell: pwsh
-        run: tests/WorkReservationWeb.Browser.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
-
       - name: Test
-        run: dotnet test src/WorkReservationWeb.slnx --configuration Release --no-build --logger trx
+        run: dotnet test src/WorkReservationWeb.slnx --configuration Release --no-build --logger trx --filter "Category!=E2E"
 
       - name: Azure login
         uses: azure/login@v2

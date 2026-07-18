@@ -33,9 +33,43 @@ jobs:
       - name: Build
         run: dotnet build src/WorkReservationWeb.slnx --configuration Release --no-restore
 
+      - name: Test
+        run: dotnet test src/WorkReservationWeb.slnx --configuration Release --no-build --logger trx --filter "Category!=E2E"
+
+  browser-test:
+    name: Browser (E2E) tests
+    runs-on: ubuntu-latest
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install Azure Functions Core Tools
+        run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
+
+      - name: Start Azurite
+        run: |
+          npm install -g azurite
+          azurite --silent --location "$RUNNER_TEMP/azurite" &
+
+      - name: Restore
+        run: dotnet restore src/WorkReservationWeb.slnx
+
+      - name: Build
+        run: dotnet build src/WorkReservationWeb.slnx --configuration Release --no-restore
+
       - name: Install Playwright Chromium
         shell: pwsh
         run: tests/WorkReservationWeb.Browser.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
-      - name: Test
-        run: dotnet test src/WorkReservationWeb.slnx --configuration Release --no-build --logger trx
+      - name: Browser tests
+        run: dotnet test tests/WorkReservationWeb.Browser.Tests/WorkReservationWeb.Browser.Tests.csproj --configuration Release --no-build --logger trx --filter "Category=E2E"
