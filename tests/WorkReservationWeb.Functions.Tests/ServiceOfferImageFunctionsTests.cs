@@ -85,6 +85,33 @@ public sealed class ServiceOfferImageFunctionsTests
         Assert.Equal(imageBytes, memoryStream.ToArray());
     }
 
+    [Fact]
+    public async Task UploadImage_BehindStaticWebApps_UsesForwardedHostForAssetUrl()
+    {
+        using var tempDirectory = new TemporaryDirectory();
+        var storage = new LocalFileServiceOfferImageStorage(tempDirectory.Path);
+        var serializerOptions = CreateSerializerOptions();
+        var serviceProvider = CreateServiceProvider(serializerOptions);
+        var functionContext = new TestFunctionContext(serviceProvider);
+        var function = new UploadServiceOfferImageFunction(storage);
+
+        var request = new TestHttpRequestData(
+            functionContext,
+            "POST",
+            new Uri("https://swa-internal-host.azurewebsites.net/api/management/service-images"),
+            JsonSerializer.Serialize(
+                new UploadServiceOfferImageRequestDto("offer.png", "image/png", Convert.ToBase64String([1, 2, 3])),
+                serializerOptions));
+        request.Headers.Add("x-ms-client-principal", CreateClientPrincipalHeaderValue("authenticated", "admin"));
+        request.Headers.Add("x-ms-original-url", "https://public-site.azurestaticapps.net/api/management/service-images");
+
+        var response = await function.Run(request, CancellationToken.None);
+        var result = await DeserializeResponseAsync<ServiceOfferImageUploadResultDto>(response, serializerOptions);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal($"https://public-site.azurestaticapps.net/api/public/assets/{result.AssetId}", result.Url);
+    }
+
     private static JsonSerializerOptions CreateSerializerOptions() => new(JsonSerializerDefaults.Web);
 
     private static IServiceProvider CreateServiceProvider(JsonSerializerOptions serializerOptions)

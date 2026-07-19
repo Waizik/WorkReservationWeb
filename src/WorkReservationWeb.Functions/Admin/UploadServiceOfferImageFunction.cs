@@ -69,7 +69,7 @@ public sealed class UploadServiceOfferImageFunction(
             new ServiceOfferImageUpload(payload.FileName.Trim(), payload.ContentType.Trim(), content),
             cancellationToken);
 
-        var baseUri = request.Url.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+        var baseUri = ResolvePublicBaseUri(request);
         var result = new ServiceOfferImageUploadResultDto(
             savedImage.AssetId,
             $"{baseUri}/api/public/assets/{savedImage.AssetId}",
@@ -87,5 +87,18 @@ public sealed class UploadServiceOfferImageFunction(
         var response = request.CreateResponse(System.Net.HttpStatusCode.Created);
         await response.WriteAsJsonAsync(result, cancellationToken);
         return response;
+    }
+
+    // Behind Azure Static Web Apps the function sees its internal *.azurewebsites.net hostname;
+    // the public host the browser can reach is only available in the forwarded x-ms-original-url header.
+    private static string ResolvePublicBaseUri(HttpRequestData request)
+    {
+        if (request.Headers.TryGetValues("x-ms-original-url", out var originalUrlValues) &&
+            Uri.TryCreate(originalUrlValues.FirstOrDefault(), UriKind.Absolute, out var originalUrl))
+        {
+            return originalUrl.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+        }
+
+        return request.Url.GetLeftPart(UriPartial.Authority).TrimEnd('/');
     }
 }
