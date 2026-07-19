@@ -1,0 +1,76 @@
+@implements IDisposable
+
+<div class="service-carousel">
+	<img src="@CurrentImageUrl" alt="@Alt" loading="lazy"
+		 onerror="this.onerror=null;this.src='images/service-placeholder.svg';" />
+
+	@if (Images.Count > 1)
+	{
+		<button type="button" class="service-carousel-arrow service-carousel-arrow-left" aria-label="Previous image"
+				@onclick="ShowPrevious" @onclick:stopPropagation="true">&#10094;</button>
+		<button type="button" class="service-carousel-arrow service-carousel-arrow-right" aria-label="Next image"
+				@onclick="ShowNext" @onclick:stopPropagation="true">&#10095;</button>
+
+		<div class="service-carousel-dots">
+			@for (var index = 0; index < Images.Count; index++)
+			{
+				<span class="service-carousel-dot @(index == SafeIndex ? "active" : null)"></span>
+			}
+		</div>
+	}
+</div>
+
+@code {
+	private static readonly TimeSpan RotationInterval = TimeSpan.FromSeconds(5);
+
+	private Timer? rotationTimer;
+	private int currentIndex;
+
+	[Parameter, EditorRequired]
+	public IReadOnlyList<string> Images { get; set; } = [];
+
+	[Parameter]
+	public string? Alt { get; set; }
+
+	private int SafeIndex => Images.Count == 0 ? 0 : Math.Clamp(currentIndex, 0, Images.Count - 1);
+
+	private string CurrentImageUrl => Images.Count == 0 ? "images/service-placeholder.svg" : Images[SafeIndex];
+
+	protected override void OnInitialized()
+	{
+		rotationTimer = new Timer(_ => _ = InvokeAsync(AdvanceAsync), null, RotationInterval, RotationInterval);
+	}
+
+	private Task AdvanceAsync()
+	{
+		if (Images.Count > 1)
+		{
+			currentIndex = (SafeIndex + 1) % Images.Count;
+			StateHasChanged();
+		}
+
+		return Task.CompletedTask;
+	}
+
+	private void ShowNext()
+	{
+		currentIndex = (SafeIndex + 1) % Images.Count;
+		RestartRotation();
+	}
+
+	private void ShowPrevious()
+	{
+		currentIndex = (SafeIndex - 1 + Images.Count) % Images.Count;
+		RestartRotation();
+	}
+
+	private void RestartRotation()
+	{
+		rotationTimer?.Change(RotationInterval, RotationInterval);
+	}
+
+	public void Dispose()
+	{
+		rotationTimer?.Dispose();
+	}
+}

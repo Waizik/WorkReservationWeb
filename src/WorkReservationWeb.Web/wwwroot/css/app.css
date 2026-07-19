@@ -175,13 +175,6 @@ a:hover, .btn-link:hover {
     box-shadow: 0 0 0 0.2rem rgba(14, 124, 134, 0.18), var(--wr-shadow-hover);
 }
 
-.service-card img {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    object-fit: cover;
-    display: block;
-}
-
 .service-card .service-card-body {
     padding: 0.9rem 1rem 1rem 1rem;
     display: flex;

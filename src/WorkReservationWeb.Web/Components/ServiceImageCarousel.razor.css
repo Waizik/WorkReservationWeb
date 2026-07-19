@@ -1,0 +1,72 @@
+.service-carousel {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background-color: #e8eef5;
+}
+
+.service-carousel img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.service-carousel-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 50%;
+    background-color: rgba(15, 23, 32, 0.45);
+    color: #fff;
+    font-size: 0.85rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.service-carousel:hover .service-carousel-arrow,
+.service-carousel-arrow:focus-visible {
+    opacity: 1;
+}
+
+.service-carousel-arrow:hover {
+    background-color: rgba(15, 23, 32, 0.7);
+}
+
+.service-carousel-arrow-left {
+    left: 0.5rem;
+}
+
+.service-carousel-arrow-right {
+    right: 0.5rem;
+}
+
+.service-carousel-dots {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 0.35rem;
+}
+
+.service-carousel-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 2px rgba(15, 23, 32, 0.5);
+}
+
+.service-carousel-dot.active {
+    background-color: #fff;
+}

@@ -59,8 +59,8 @@
 
 	<div class="mb-3">
 		<label for="serviceImageUpload" class="form-label">Images</label>
-		<InputFile id="serviceImageUpload" class="form-control" OnChange="UploadImageAsync" accept="image/*" disabled="@(isSavingServiceOffer || isUploadingImage)" />
-		<div class="form-text">Upload image files up to 5 MB each. You will crop the image to a 16:9 frame before it is uploaded and added to the current service offer.</div>
+		<InputFile id="serviceImageUpload" class="form-control" OnChange="UploadImagesAsync" accept="image/*" multiple disabled="@(isSavingServiceOffer || isUploadingImage)" />
+		<div class="form-text">Upload one or more image files up to 5 MB each. You will crop every image to a 16:9 frame before it is uploaded and added to the current service offer.</div>
 	</div>
 
 	@if (!string.IsNullOrWhiteSpace(imageUploadMessage))
@@ -649,59 +649,71 @@
 		}
 	}
 
-	private async Task UploadImageAsync(InputFileChangeEventArgs args)
+	private async Task UploadImagesAsync(InputFileChangeEventArgs args)
 	{
 		imageUploadMessage = null;
-		var file = args.File;
-		if (file is null)
+		var files = args.GetMultipleFiles(maximumFileCount: 10);
+		if (files.Count == 0)
 		{
 			return;
 		}
 
 		isUploadingImage = true;
+		var uploadedFileNames = new List<string>();
+		var cancelledCount = 0;
 
 		try
 		{
-			await using var sourceStream = file.OpenReadStream(5 * 1024 * 1024, CancellationToken.None);
-			await using var memoryStream = new MemoryStream();
-			await sourceStream.CopyToAsync(memoryStream, CancellationToken.None);
+			foreach (var file in files)
+			{
+				await using var sourceStream = file.OpenReadStream(5 * 1024 * 1024, CancellationToken.None);
+				await using var memoryStream = new MemoryStream();
+				await sourceStream.CopyToAsync(memoryStream, CancellationToken.None);
 
-			var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
-			var croppedBase64 = await JSRuntime.InvokeAsync<string?>(
-				"workReservationImageCropper.show",
-				$"data:{contentType};base64,{Convert.ToBase64String(memoryStream.ToArray())}");
+				var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+				var croppedBase64 = await JSRuntime.InvokeAsync<string?>(
+					"workReservationImageCropper.show",
+					$"data:{contentType};base64,{Convert.ToBase64String(memoryStream.ToArray())}");
 
-			if (string.IsNullOrWhiteSpace(croppedBase64))
+				if (string.IsNullOrWhiteSpace(croppedBase64))
+				{
+					cancelledCount++;
+					continue;
+				}
+
+				var uploadedImage = await AdminApiClient.UploadServiceOfferImageAsync(
+					Path.ChangeExtension(file.Name, ".jpg"),
+					"image/jpeg",
+					croppedBase64,
+					CancellationToken.None);
+				if (uploadedImage is null)
+				{
+					continue;
+				}
+
+				if (!serviceImageUrls.Contains(uploadedImage.Url, StringComparer.OrdinalIgnoreCase))
+				{
+					serviceImageUrls.Add(uploadedImage.Url);
+				}
+
+				uploadedFileNames.Add($"'{uploadedImage.FileName}'");
+			}
+
+			if (uploadedFileNames.Count > 0)
+			{
+				imageUploadMessageClass = "text-success";
+				imageUploadMessage = $"Uploaded {string.Join(", ", uploadedFileNames)}.";
+			}
+			else
 			{
 				imageUploadMessageClass = "text-warning";
-				imageUploadMessage = "Image upload cancelled.";
-				return;
+				imageUploadMessage = cancelledCount > 0 ? "Image upload cancelled." : "No images were uploaded.";
 			}
-
-			var uploadedImage = await AdminApiClient.UploadServiceOfferImageAsync(
-				Path.ChangeExtension(file.Name, ".jpg"),
-				"image/jpeg",
-				croppedBase64,
-				CancellationToken.None);
-			if (uploadedImage is null)
-			{
-				imageUploadMessageClass = "text-danger";
-				imageUploadMessage = "Image upload returned no payload.";
-				return;
-			}
-
-			if (!serviceImageUrls.Contains(uploadedImage.Url, StringComparer.OrdinalIgnoreCase))
-			{
-				serviceImageUrls.Add(uploadedImage.Url);
-			}
-
-			imageUploadMessageClass = "text-success";
-			imageUploadMessage = $"Uploaded '{uploadedImage.FileName}'.";
 		}
 		catch
 		{
 			imageUploadMessageClass = "text-danger";
-			imageUploadMessage = "Failed to upload image.";
+			imageUploadMessage = "Failed to upload images.";
 		}
 		finally
 		{

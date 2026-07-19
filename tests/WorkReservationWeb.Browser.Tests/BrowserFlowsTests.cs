@@ -80,18 +80,20 @@ public sealed class BrowserFlowsTests(LocalAppHostFixture hostFixture) : IAsyncL
 
         // Any real PNG works as the upload payload; a page screenshot avoids bundling a fixture file.
         var pngBytes = await page.ScreenshotAsync();
-        await page.SetInputFilesAsync("#serviceImageUpload", new FilePayload
+        await page.SetInputFilesAsync("#serviceImageUpload", new[]
         {
-            Name = "cropper-test.png",
-            MimeType = "image/png",
-            Buffer = pngBytes
+            new FilePayload { Name = "cropper-test.png", MimeType = "image/png", Buffer = pngBytes },
+            new FilePayload { Name = "cropper-test-2.png", MimeType = "image/png", Buffer = pngBytes }
         });
 
+        // Each selected file opens its own cropper modal in sequence.
+        await page.WaitForSelectorAsync(".wr-modal");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Use cropped image" }).ClickAsync();
         await page.WaitForSelectorAsync(".wr-modal");
         await page.GetByRole(AriaRole.Button, new() { Name = "Use cropped image" }).ClickAsync();
 
-        await page.WaitForSelectorAsync("text=Uploaded 'cropper-test.jpg'", new() { Timeout = 60000 });
-        await page.WaitForSelectorAsync("img[alt='Service offer image']");
+        await page.WaitForSelectorAsync("text=Uploaded 'cropper-test.jpg', 'cropper-test-2.jpg'", new() { Timeout = 60000 });
+        Assert.Equal(2, await page.Locator("img[alt='Service offer image']").CountAsync());
     }
 
     [Fact]

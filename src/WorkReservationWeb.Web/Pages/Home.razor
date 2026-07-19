@@ -1,6 +1,7 @@
 @page "/"
 @inject WorkReservationWeb.Web.Services.ReservationPublicApiClient ApiClient
 @using WorkReservationWeb.Shared.Contracts
+@using WorkReservationWeb.Web.Components
 
 <PageTitle>WorkReservation — Book an Appointment</PageTitle>
 
@@ -32,8 +33,7 @@ else
 						 data-service-id="@service.Id"
 						 role="button"
 						 @onclick="() => SelectServiceAsync(service.Id)">
-						<img src="@GetServiceImageUrl(service)" alt="@service.Title" loading="lazy"
-							 onerror="this.onerror=null;this.src='images/service-placeholder.svg';" />
+						<ServiceImageCarousel Images="@service.ImageUrls" Alt="@service.Title" />
 						<div class="service-card-body">
 							<div class="service-card-title">
 								<span>@service.Title</span>
@@ -190,12 +190,6 @@ else
 		var loadedSlots = await ApiClient.GetSlotsAsync(selectedServiceId, CancellationToken.None);
 		slots.AddRange(loadedSlots);
 		selectedSlotId = slots.FirstOrDefault()?.Id ?? string.Empty;
-	}
-
-	private static string GetServiceImageUrl(ServiceOfferDto service)
-	{
-		return service.ImageUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url))
-			?? "images/service-placeholder.svg";
 	}
 
 	private async Task SubmitAsync()
