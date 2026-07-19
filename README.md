@@ -99,6 +99,7 @@ The public booking endpoint can be protected by a [Cloudflare Turnstile](https:/
 3. Put the **secret key** into the GitHub secret `CAPTCHA_SECRET_KEY`; the CD pipeline writes it to the `Captcha__SecretKey` app setting. Locally it can be set in `local.settings.json` (`Captcha:SecretKey`).
 
 When enabled, the booking form renders the Turnstile widget and `POST /api/public/reservations` rejects requests without a valid `x-captcha-token` header. When the keys are empty (local development, tests), the captcha is skipped entirely.
+Configured in https://dash.cloudflare.com/f13e100c64914e6f7e77c5ac694e696d/turnstile/add - used github account.
 
 ## Availability schedules
 
