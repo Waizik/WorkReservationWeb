@@ -5,7 +5,8 @@
             "default": "Warning",
             "Host.Results": "Warning",
             "Function": "Warning",
-            "WorkReservationWeb": "Warning"
+            "Host.Function.Console": "Information",
+            "WorkReservationWeb": "None"
         },
         "applicationInsights": {
             "samplingSettings": {

@@ -154,7 +154,7 @@ Blob image storage configuration for Functions local development:
 }
 ```
 
-If the Blob connection string is left empty, uploaded images are stored in a local `uploaded-assets` folder next to the Functions runtime output.
+If the Blob connection string is left empty, uploaded images are stored in a local `uploaded-assets` folder under `%TEMP%/WorkReservationWeb` (outside the Functions script root, which the host watches for changes).
 
 Communication Services configuration for Functions local development:
 
@@ -167,7 +167,7 @@ Communication Services configuration for Functions local development:
 }
 ```
 
-If Communication Services is not configured, confirmation and reminder messages are written to a local `sent-emails` folder next to the Functions runtime output.
+If Communication Services is not configured, confirmation and reminder messages are written to a local `sent-emails` folder under `%TEMP%/WorkReservationWeb` (outside the Functions script root, which the host watches for changes).
 
 Reminder schedule configuration for Functions local development:
 

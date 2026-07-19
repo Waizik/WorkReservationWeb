@@ -2,6 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using NCrontab;
 using WorkReservationWeb.Infrastructure.Notifications;
 using WorkReservationWeb.Infrastructure.Services;
@@ -11,6 +12,23 @@ var builder = FunctionsApplication.CreateBuilder(args);
 builder.Services
     .AddApplicationInsightsTelemetryWorkerService()
     .ConfigureFunctionsApplicationInsights();
+
+// The Application Insights SDK registers a default filter rule that only lets Warning+ logs
+// through to Application Insights; remove it so Information logs are exported as well.
+builder.Logging.Services.Configure<LoggerFilterOptions>(options =>
+{
+    var applicationInsightsRule = options.Rules.FirstOrDefault(rule =>
+        rule.ProviderName == "Microsoft.Extensions.Logging.ApplicationInsights.ApplicationInsightsLoggerProvider");
+    if (applicationInsightsRule is not null)
+    {
+        options.Rules.Remove(applicationInsightsRule);
+    }
+});
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Logging.AddConsole();
+}
 
 builder.Services.AddSingleton<ReservationReminderProcessor>();
 
@@ -36,7 +54,10 @@ else
 if (string.IsNullOrWhiteSpace(emailConnectionString) || string.IsNullOrWhiteSpace(emailSenderAddress))
 {
     builder.Services.AddSingleton<IReservationNotificationService>(_ =>
-        new LocalDevelopmentReservationNotificationService(Path.Combine(AppContext.BaseDirectory, "sent-emails")));
+        new LocalDevelopmentReservationNotificationService(
+            // Local fallback data must live outside AppContext.BaseDirectory: the Functions host watches the
+            // script root for changes and writing there triggers a host restart that breaks in-flight state.
+            Path.Combine(Path.GetTempPath(), "WorkReservationWeb", "sent-emails")));
 }
 else
 {
