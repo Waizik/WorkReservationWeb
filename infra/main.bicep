@@ -35,6 +35,7 @@ var staticWebAppName = take('${environmentName}-swa-${uniqueSuffix}', 60)
 var functionAppName = take('${environmentName}-reminders-${uniqueSuffix}', 60)
 var functionPlanName = take('${environmentName}-reminders-plan-${uniqueSuffix}', 40)
 var appInsightsName = take('${environmentName}-appi-${uniqueSuffix}', 90)
+var logAnalyticsWorkspaceName = take('${environmentName}-log-${uniqueSuffix}', 63)
 var cosmosAccountName = take('${environmentName}-cosmos-${uniqueSuffix}', 44)
 var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
 var cosmosConnectionString = cosmosAccount.listConnectionStrings().connectionStrings[0].connectionString
@@ -115,12 +116,24 @@ resource cosmosContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/con
   }
 }
 
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: logAnalyticsWorkspaceName
+  location: location
+  properties: {
+    sku: {
+      name: 'PerGB2018'
+    }
+    retentionInDays: 30
+  }
+}
+
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
   location: location
   kind: 'web'
   properties: {
     Application_Type: 'web'
+    WorkspaceResourceId: logAnalyticsWorkspace.id
   }
 }
 
