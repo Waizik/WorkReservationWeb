@@ -1,16 +1,15 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 <div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+    <NavMenu />
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
-            @Body
-        </article>
+    <main class="wr-page">
+        @Body
     </main>
+
+    <footer class="wr-footer">
+        <div class="wr-page py-3 d-flex justify-content-between flex-wrap gap-2">
+            <span>WorkReservation</span>
+            <span>Book your appointment online, any time.</span>
+        </div>
+    </footer>
 </div>

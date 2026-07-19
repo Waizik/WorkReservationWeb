@@ -48,6 +48,8 @@ src/WorkReservationWeb.Web/wwwroot/lib/**
 !src/WorkReservationWeb.Web/wwwroot/lib/bootstrap/dist/
 !src/WorkReservationWeb.Web/wwwroot/lib/bootstrap/dist/css/
 !src/WorkReservationWeb.Web/wwwroot/lib/bootstrap/dist/css/**
+!src/WorkReservationWeb.Web/wwwroot/lib/cropperjs/
+!src/WorkReservationWeb.Web/wwwroot/lib/cropperjs/**
 src/WorkReservationWeb.Web/wwwroot/**/*.map
 
 # MSBuild Binary and Structured Log

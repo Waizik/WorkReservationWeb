@@ -44,10 +44,10 @@ public sealed class BrowserFlowsTests(LocalAppHostFixture hostFixture) : IAsyncL
         var page = await context.NewPageAsync();
         await page.GotoAsync("/");
         await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-        await page.WaitForSelectorAsync("#service");
-        await page.WaitForFunctionAsync("() => document.querySelectorAll('#service option').length > 0");
-        await page.WaitForSelectorAsync("#slot");
-        await page.WaitForFunctionAsync("() => document.querySelectorAll('#slot option').length > 0");
+        await page.WaitForSelectorAsync(".service-card");
+        await page.ClickAsync(".service-card");
+        await page.WaitForSelectorAsync(".slot-chip");
+        await page.ClickAsync(".slot-chip");
 
         await page.FillAsync("#customerName", "Browser Test User");
         await page.FillAsync("#customerEmail", reservationEmail);
@@ -61,6 +61,37 @@ public sealed class BrowserFlowsTests(LocalAppHostFixture hostFixture) : IAsyncL
         await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
         await page.GetByRole(AriaRole.Button, new() { Name = "Refresh" }).Last.ClickAsync();
         await page.WaitForSelectorAsync($"text={reservationEmail}", new() { Timeout = 60000 });
+    }
+
+    [Fact]
+    public async Task AdminFlow_ImageUpload_OpensCropperAndAddsCroppedImage()
+    {
+        await using var context = await browser!.NewContextAsync(new BrowserNewContextOptions
+        {
+            BaseURL = hostFixture.WebBaseUrl,
+            ViewportSize = new ViewportSize { Width = 1440, Height = 1200 }
+        });
+
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("/admin");
+        await page.WaitForSelectorAsync("h1:has-text('Admin')");
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        await page.WaitForSelectorAsync("#serviceImageUpload");
+
+        // Any real PNG works as the upload payload; a page screenshot avoids bundling a fixture file.
+        var pngBytes = await page.ScreenshotAsync();
+        await page.SetInputFilesAsync("#serviceImageUpload", new FilePayload
+        {
+            Name = "cropper-test.png",
+            MimeType = "image/png",
+            Buffer = pngBytes
+        });
+
+        await page.WaitForSelectorAsync(".wr-modal");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Use cropped image" }).ClickAsync();
+
+        await page.WaitForSelectorAsync("text=Uploaded 'cropper-test.jpg'", new() { Timeout = 60000 });
+        await page.WaitForSelectorAsync("img[alt='Service offer image']");
     }
 
     [Fact]

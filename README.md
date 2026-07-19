@@ -162,6 +162,8 @@ Blob image storage configuration for Functions local development:
 }
 ```
 
+Images are cropped client-side to a 16:9 frame before upload (Cropper.js, vendored under `wwwroot/lib/cropperjs`) and shown on the public booking page's service cards; services without an image use `wwwroot/images/service-placeholder.svg`.
+
 If the Blob connection string is left empty, uploaded images are stored in a local `uploaded-assets` folder under `%TEMP%/WorkReservationWeb` (outside the Functions script root, which the host watches for changes).
 
 Communication Services configuration for Functions local development:

@@ -1,10 +1,13 @@
-﻿@page "/"
+@page "/"
 @inject WorkReservationWeb.Web.Services.ReservationPublicApiClient ApiClient
 @using WorkReservationWeb.Shared.Contracts
 
-<PageTitle>Book Reservation</PageTitle>
+<PageTitle>WorkReservation — Book an Appointment</PageTitle>
 
-<h1>Book a Reservation</h1>
+<section class="wr-hero">
+	<h1>Book your appointment online</h1>
+	<p>Choose a service, pick a time that suits you, and get an instant confirmation — no phone calls needed.</p>
+</section>
 
 @if (isLoading)
 {
@@ -12,61 +15,108 @@
 }
 else if (!string.IsNullOrWhiteSpace(errorMessage))
 {
-	<p class="text-danger">@errorMessage</p>
+	<div class="alert alert-danger">@errorMessage</div>
 }
 else
 {
-	<div class="mb-3">
-		<label for="service" class="form-label">Service</label>
-		<select id="service" class="form-select" @bind="selectedServiceId" @bind:after="OnServiceChanged">
+	<div class="wr-section-card">
+		<div class="d-flex justify-content-between align-items-baseline mb-3">
+			<h2 class="wr-section-title">1. Choose a service</h2>
+		</div>
+
+		<div class="row g-3">
 			@foreach (var service in services)
 			{
-				<option value="@service.Id">@service.Title (@service.BasePrice.ToString("0.00"))</option>
+				<div class="col-sm-6 col-lg-4">
+					<div class="service-card @(service.Id == selectedServiceId ? "selected" : null)"
+						 data-service-id="@service.Id"
+						 role="button"
+						 @onclick="() => SelectServiceAsync(service.Id)">
+						<img src="@GetServiceImageUrl(service)" alt="@service.Title" loading="lazy"
+							 onerror="this.onerror=null;this.src='images/service-placeholder.svg';" />
+						<div class="service-card-body">
+							<div class="service-card-title">
+								<span>@service.Title</span>
+								<span class="service-card-price">@service.BasePrice.ToString("0.00")</span>
+							</div>
+							@if (!string.IsNullOrWhiteSpace(service.Description))
+							{
+								<p class="service-card-description">@service.Description</p>
+							}
+						</div>
+					</div>
+				</div>
 			}
-		</select>
-	</div>
-
-	@if (slots.Count == 0)
-	{
-		<p>No available slots for this service.</p>
-	}
-	else
-	{
-		<div class="mb-3">
-			<label for="slot" class="form-label">Available slot</label>
-			<select id="slot" class="form-select" @bind="selectedSlotId">
-				@foreach (var slot in slots)
-				{
-					<option value="@slot.Id">
-						@slot.StartUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm") - @slot.EndUtc.LocalDateTime.ToString("HH:mm")
-						(@slot.ReservedCount/@slot.Capacity booked)
-					</option>
-				}
-			</select>
 		</div>
-	}
-
-	<div class="mb-3">
-		<label for="customerName" class="form-label">Name</label>
-		<input id="customerName" class="form-control" @bind="customerName" />
 	</div>
 
-	<div class="mb-3">
-		<label for="customerEmail" class="form-label">Email</label>
-		<input id="customerEmail" class="form-control" @bind="customerEmail" />
+	<div class="wr-section-card">
+		<h2 class="wr-section-title mb-3">2. Pick a time</h2>
+
+		@if (slots.Count == 0)
+		{
+			<p class="text-muted mb-0">No available slots for this service.</p>
+		}
+		else
+		{
+			<div class="slot-scroll">
+				@foreach (var day in slots.GroupBy(slot => slot.StartUtc.LocalDateTime.Date))
+				{
+					<div class="slot-day">
+						<div class="slot-day-label">@day.Key.ToString("ddd d MMM yyyy")</div>
+						<div class="d-flex flex-wrap gap-2">
+							@foreach (var slot in day)
+							{
+								<button type="button"
+										class="slot-chip @(slot.Id == selectedSlotId ? "selected" : null)"
+										data-slot-id="@slot.Id"
+										@onclick="() => selectedSlotId = slot.Id">
+									@slot.StartUtc.LocalDateTime.ToString("HH:mm")
+									<span class="slot-chip-capacity">(@slot.ReservedCount/@slot.Capacity)</span>
+								</button>
+							}
+						</div>
+					</div>
+				}
+			</div>
+		}
 	</div>
 
-	<div class="mb-3">
-		<label for="note" class="form-label">Note (optional)</label>
-		<textarea id="note" class="form-control" @bind="note"></textarea>
+	<div class="wr-section-card">
+		<h2 class="wr-section-title mb-3">3. Your details</h2>
+
+		<div class="row g-3">
+			<div class="col-md-6">
+				<label for="customerName" class="form-label">Name</label>
+				<input id="customerName" class="form-control" @bind="customerName" autocomplete="name" />
+			</div>
+
+			<div class="col-md-6">
+				<label for="customerEmail" class="form-label">Email</label>
+				<input id="customerEmail" type="email" class="form-control" @bind="customerEmail" autocomplete="email" />
+			</div>
+
+			<div class="col-12">
+				<label for="note" class="form-label">Note (optional)</label>
+				<textarea id="note" class="form-control" rows="3" @bind="note"></textarea>
+			</div>
+		</div>
+
+		<div class="mt-4 d-flex align-items-center gap-3 flex-wrap">
+			<button class="btn btn-primary btn-lg px-4" @onclick="SubmitAsync" disabled="@isSubmitting">Book now</button>
+			@if (selectedSlot is not null)
+			{
+				<span class="text-muted">
+					@selectedService?.Title — @selectedSlot.StartUtc.LocalDateTime.ToString("ddd d MMM yyyy HH:mm")
+				</span>
+			}
+		</div>
+
+		@if (!string.IsNullOrWhiteSpace(resultMessage))
+		{
+			<div class="alert @resultClass mt-3 mb-0" role="alert">@resultMessage</div>
+		}
 	</div>
-
-	<button class="btn btn-primary" @onclick="SubmitAsync" disabled="@isSubmitting">Book now</button>
-
-	@if (!string.IsNullOrWhiteSpace(resultMessage))
-	{
-		<p class="mt-3 @resultClass">@resultMessage</p>
-	}
 }
 
 @code {
@@ -77,7 +127,7 @@ else
 	private bool isSubmitting;
 	private string? errorMessage;
 	private string? resultMessage;
-	private string resultClass = "text-success";
+	private string resultClass = "alert-success";
 
 	private string selectedServiceId = string.Empty;
 	private string selectedSlotId = string.Empty;
@@ -85,6 +135,9 @@ else
 	private string customerName = string.Empty;
 	private string customerEmail = string.Empty;
 	private string? note;
+
+	private ServiceOfferDto? selectedService => services.FirstOrDefault(x => x.Id == selectedServiceId);
+	private ReservationSlotDto? selectedSlot => slots.FirstOrDefault(x => x.Id == selectedSlotId);
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -113,8 +166,15 @@ else
 		}
 	}
 
-	private async Task OnServiceChanged()
+	private async Task SelectServiceAsync(string serviceId)
 	{
+		if (string.Equals(selectedServiceId, serviceId, StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		selectedServiceId = serviceId;
+		resultMessage = null;
 		await LoadSlotsAsync();
 	}
 
@@ -132,21 +192,27 @@ else
 		selectedSlotId = slots.FirstOrDefault()?.Id ?? string.Empty;
 	}
 
+	private static string GetServiceImageUrl(ServiceOfferDto service)
+	{
+		return service.ImageUrls.FirstOrDefault(url => !string.IsNullOrWhiteSpace(url))
+			?? "images/service-placeholder.svg";
+	}
+
 	private async Task SubmitAsync()
 	{
 		resultMessage = null;
 
 		if (string.IsNullOrWhiteSpace(customerName) || string.IsNullOrWhiteSpace(customerEmail))
 		{
-			resultClass = "text-danger";
+			resultClass = "alert-danger";
 			resultMessage = "Name and email are required.";
 			return;
 		}
 
-		var selectedSlot = slots.FirstOrDefault(x => x.Id == selectedSlotId);
-		if (selectedSlot is null)
+		var slotToBook = selectedSlot;
+		if (slotToBook is null)
 		{
-			resultClass = "text-danger";
+			resultClass = "alert-danger";
 			resultMessage = "Please select an available slot.";
 			return;
 		}
@@ -157,8 +223,8 @@ else
 		{
 			var request = new CreateReservationRequestDto(
 				selectedServiceId,
-				selectedSlot.Id,
-				selectedSlot.Etag,
+				slotToBook.Id,
+				slotToBook.Etag,
 				customerName,
 				customerEmail,
 				note);
@@ -166,12 +232,12 @@ else
 			var result = await ApiClient.CreateReservationAsync(request, CancellationToken.None);
 			if (result is null)
 			{
-				resultClass = "text-danger";
+				resultClass = "alert-danger";
 				resultMessage = "Booking failed unexpectedly.";
 				return;
 			}
 
-			resultClass = result.Success ? "text-success" : "text-danger";
+			resultClass = result.Success ? "alert-success" : "alert-danger";
 			resultMessage = result.Message;
 
 			await LoadSlotsAsync();
