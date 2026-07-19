@@ -90,6 +90,16 @@ The backend now supports two runtime modes:
 
 In Cosmos mode, slots and reservations are stored in a single container using `/partitionKey`, where slot and reservation documents for one service share the same partition. Reservation creation updates the slot and creates the reservation in one transactional batch.
 
+## Spam protection (optional)
+
+The public booking endpoint can be protected by a [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) captcha (free). It is disabled until both keys are configured:
+
+1. Create a Turnstile site at dash.cloudflare.com (widget type "Managed") for your Static Web App domain.
+2. Put the **site key** (public) into `src/WorkReservationWeb.Web/wwwroot/appsettings.json` → `CaptchaSiteKey` and commit it.
+3. Put the **secret key** into the GitHub secret `CAPTCHA_SECRET_KEY`; the CD pipeline writes it to the `Captcha__SecretKey` app setting. Locally it can be set in `local.settings.json` (`Captcha:SecretKey`).
+
+When enabled, the booking form renders the Turnstile widget and `POST /api/public/reservations` rejects requests without a valid `x-captcha-token` header. When the keys are empty (local development, tests), the captcha is skipped entirely.
+
 ## Availability schedules
 
 Bookable slots are defined by a weekly availability schedule per service offer, managed in the admin UI ("Availability Schedule" section). The admin picks the days of week and a single set of times that applies to every selected day, plus slot duration, capacity, booking window (how many days ahead customers can book), and time zone. The schedule repeats indefinitely; individual dates can be overridden (custom times or closed entirely).

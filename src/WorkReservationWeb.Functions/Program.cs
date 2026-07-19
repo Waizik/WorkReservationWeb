@@ -32,6 +32,13 @@ if (builder.Environment.IsDevelopment())
 
 builder.Services.AddSingleton<ReservationReminderProcessor>();
 
+var captchaSecretKey = builder.Configuration["Captcha:SecretKey"];
+if (!string.IsNullOrWhiteSpace(captchaSecretKey))
+{
+    builder.Services.AddSingleton<WorkReservationWeb.Functions.Security.ICaptchaVerifier>(_ =>
+        new WorkReservationWeb.Functions.Security.TurnstileCaptchaVerifier(new HttpClient(), captchaSecretKey));
+}
+
 var cosmosConnectionString = builder.Configuration["CosmosDb:ConnectionString"];
 var cosmosDatabaseName = builder.Configuration["CosmosDb:DatabaseName"] ?? "WorkReservationWeb";
 var cosmosContainerName = builder.Configuration["CosmosDb:ContainerName"] ?? "Reservations";

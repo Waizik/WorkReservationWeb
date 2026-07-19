@@ -1,6 +1,7 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using WorkReservationWeb.Functions.Security;
 using WorkReservationWeb.Infrastructure.Notifications;
 using WorkReservationWeb.Infrastructure.Services;
 using WorkReservationWeb.Shared.Contracts;
@@ -10,8 +11,11 @@ namespace WorkReservationWeb.Functions.Public;
 public sealed class CreateReservationFunction(
     IReservationPlatformService reservationPlatformService,
     IReservationNotificationService notificationService,
+    ICaptchaVerifier? captchaVerifier = null,
     ILogger<CreateReservationFunction>? logger = null)
 {
+    private const string CaptchaTokenHeader = "x-captcha-token";
+
     [Function("CreateReservation")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "public/reservations")] HttpRequestData request,
@@ -47,6 +51,30 @@ public sealed class CreateReservationFunction(
                     null),
                 cancellationToken);
             return badRequest;
+        }
+
+        if (captchaVerifier is not null)
+        {
+            var captchaToken = request.Headers.TryGetValues(CaptchaTokenHeader, out var captchaTokenValues)
+                ? captchaTokenValues.FirstOrDefault()
+                : null;
+
+            if (!await captchaVerifier.VerifyAsync(captchaToken, cancellationToken))
+            {
+                logger?.LogWarning(
+                    "Reservation creation rejected because the captcha verification failed for service offer {ServiceOfferId}.",
+                    payload.ServiceOfferId);
+                var captchaFailed = request.CreateResponse(System.Net.HttpStatusCode.BadRequest);
+                await captchaFailed.WriteAsJsonAsync(
+                    new CreateReservationResultDto(
+                        false,
+                        ReservationCreateOutcome.ValidationFailed,
+                        null,
+                        "Security check failed. Please try again.",
+                        null),
+                    cancellationToken);
+                return captchaFailed;
+            }
         }
 
         var serviceOffer = await reservationPlatformService.GetServiceOfferAsync(payload.ServiceOfferId, cancellationToken);

@@ -27,6 +27,7 @@ jobs:
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'rg-workreservationweb' }}
       COMMUNICATION_SERVICES_CONNECTION_STRING: ${{ secrets.COMMUNICATION_SERVICES_CONNECTION_STRING }}
       COMMUNICATION_SERVICES_SENDER_ADDRESS: ${{ vars.COMMUNICATION_SERVICES_SENDER_ADDRESS }}
+      CAPTCHA_SECRET_KEY: ${{ secrets.CAPTCHA_SECRET_KEY }}
       RESERVATION_REMINDER_SCHEDULE: ${{ vars.RESERVATION_REMINDER_SCHEDULE || '0 0 0 * * *' }}
       WEB_PUBLISH_DIR: artifacts/web
       API_PUBLISH_DIR: artifacts/api
@@ -149,6 +150,7 @@ jobs:
               "APPLICATIONINSIGHTS_CONNECTION_STRING=$application_insights_connection_string" \
               "CommunicationServices__ConnectionString=$COMMUNICATION_SERVICES_CONNECTION_STRING" \
               "CommunicationServices__SenderAddress=$COMMUNICATION_SERVICES_SENDER_ADDRESS" \
+              "Captcha__SecretKey=$CAPTCHA_SECRET_KEY" \
             --output none
 
           echo "::add-mask::$static_web_app_token"

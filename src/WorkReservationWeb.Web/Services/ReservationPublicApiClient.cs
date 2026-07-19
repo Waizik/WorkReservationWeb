@@ -17,9 +17,19 @@ public sealed class ReservationPublicApiClient(HttpClient httpClient)
         return payload ?? [];
     }
 
-    public async Task<CreateReservationResultDto?> CreateReservationAsync(CreateReservationRequestDto request, CancellationToken cancellationToken)
+    public async Task<CreateReservationResultDto?> CreateReservationAsync(CreateReservationRequestDto request, string? captchaToken, CancellationToken cancellationToken)
     {
-        var response = await httpClient.PostAsJsonAsync("api/public/reservations", request, cancellationToken);
+        using var message = new HttpRequestMessage(HttpMethod.Post, "api/public/reservations")
+        {
+            Content = JsonContent.Create(request)
+        };
+
+        if (!string.IsNullOrWhiteSpace(captchaToken))
+        {
+            message.Headers.Add("x-captcha-token", captchaToken);
+        }
+
+        using var response = await httpClient.SendAsync(message, cancellationToken);
         return await response.Content.ReadFromJsonAsync<CreateReservationResultDto>(cancellationToken: cancellationToken);
     }
 }

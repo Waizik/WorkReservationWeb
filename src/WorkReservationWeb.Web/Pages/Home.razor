@@ -1,5 +1,8 @@
 @page "/"
 @inject WorkReservationWeb.Web.Services.ReservationPublicApiClient ApiClient
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@inject IJSRuntime JSRuntime
+@using Microsoft.JSInterop
 @using WorkReservationWeb.Shared.Contracts
 @using WorkReservationWeb.Web.Components
 
@@ -102,6 +105,11 @@ else
 			</div>
 		</div>
 
+		@if (CaptchaEnabled)
+		{
+			<div id="captcha-container" class="mt-4"></div>
+		}
+
 		<div class="mt-4 d-flex align-items-center gap-3 flex-wrap">
 			<button class="btn btn-primary btn-lg px-4" @onclick="SubmitAsync" disabled="@isSubmitting">Book now</button>
 			@if (selectedSlot is not null)
@@ -136,11 +144,18 @@ else
 	private string customerEmail = string.Empty;
 	private string? note;
 
+	private string? captchaSiteKey;
+	private bool captchaWidgetRendered;
+
+	private bool CaptchaEnabled => !string.IsNullOrWhiteSpace(captchaSiteKey);
+
 	private ServiceOfferDto? selectedService => services.FirstOrDefault(x => x.Id == selectedServiceId);
 	private ReservationSlotDto? selectedSlot => slots.FirstOrDefault(x => x.Id == selectedSlotId);
 
 	protected override async Task OnInitializedAsync()
 	{
+		captchaSiteKey = Configuration["CaptchaSiteKey"];
+
 		try
 		{
 			var loadedServices = await ApiClient.GetServicesAsync(CancellationToken.None);
@@ -163,6 +178,14 @@ else
 		finally
 		{
 			isLoading = false;
+		}
+	}
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (CaptchaEnabled && !captchaWidgetRendered && !isLoading && string.IsNullOrWhiteSpace(errorMessage))
+		{
+			captchaWidgetRendered = await JSRuntime.InvokeAsync<bool>("workReservationCaptcha.render", "captcha-container", captchaSiteKey);
 		}
 	}
 
@@ -211,6 +234,18 @@ else
 			return;
 		}
 
+		string? captchaToken = null;
+		if (CaptchaEnabled)
+		{
+			captchaToken = await JSRuntime.InvokeAsync<string>("workReservationCaptcha.getToken");
+			if (string.IsNullOrWhiteSpace(captchaToken))
+			{
+				resultClass = "alert-danger";
+				resultMessage = "Please complete the security check.";
+				return;
+			}
+		}
+
 		isSubmitting = true;
 
 		try
@@ -223,7 +258,7 @@ else
 				customerEmail,
 				note);
 
-			var result = await ApiClient.CreateReservationAsync(request, CancellationToken.None);
+			var result = await ApiClient.CreateReservationAsync(request, captchaToken, CancellationToken.None);
 			if (result is null)
 			{
 				resultClass = "alert-danger";
@@ -239,6 +274,11 @@ else
 		finally
 		{
 			isSubmitting = false;
+			if (CaptchaEnabled)
+			{
+				// Turnstile tokens are single-use; reset so the next booking attempt gets a fresh one.
+				await JSRuntime.InvokeVoidAsync("workReservationCaptcha.reset");
+			}
 		}
 	}
 }
