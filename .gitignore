@@ -41,8 +41,13 @@ ScaffoldingReadMe.txt
 *~
 CodeCoverage/
 
-# Generated web assets
-src/WorkReservationWeb.Web/wwwroot/lib/
+# Generated web assets: ignore vendored libraries except the Bootstrap CSS the app serves
+# (index.html links lib/bootstrap/dist/css/bootstrap.min.css, so it must be committed and deployed)
+src/WorkReservationWeb.Web/wwwroot/lib/**
+!src/WorkReservationWeb.Web/wwwroot/lib/bootstrap/
+!src/WorkReservationWeb.Web/wwwroot/lib/bootstrap/dist/
+!src/WorkReservationWeb.Web/wwwroot/lib/bootstrap/dist/css/
+!src/WorkReservationWeb.Web/wwwroot/lib/bootstrap/dist/css/**
 src/WorkReservationWeb.Web/wwwroot/**/*.map
 
 # MSBuild Binary and Structured Log
