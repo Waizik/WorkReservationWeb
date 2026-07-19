@@ -1,3 +1,4 @@
+using WorkReservationWeb.Shared;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Infrastructure.Scheduling;
@@ -6,13 +7,11 @@ public sealed record ScheduledSlot(string Id, DateTimeOffset StartUtc, DateTimeO
 
 public static class SlotScheduleCalculator
 {
-    private const string SlotIdPrefix = "slot_";
-    private const string SlotIdTimestampFormat = "yyyyMMddHHmm";
     public const string OverrideDateFormat = "yyyy-MM-dd";
     public const string TimeFormat = "HH:mm";
 
     public static string CreateSlotId(DateTimeOffset startUtc) =>
-        $"{SlotIdPrefix}{startUtc.UtcDateTime.ToString(SlotIdTimestampFormat, System.Globalization.CultureInfo.InvariantCulture)}";
+        ReservationSlotIdentifier.Create(startUtc);
 
     public static bool TryParseTime(string? value, out TimeOnly time) =>
         TimeOnly.TryParseExact(value, TimeFormat, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out time);

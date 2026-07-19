@@ -172,6 +172,11 @@ public class CreateReservationFunctionValidationTests
             throw new NotSupportedException();
         }
 
+        public Task<CancelReservationResultDto> CancelReservationAsync(string reservationId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
         public string? MarkedConfirmationReservationId { get; private set; }
     }
 
@@ -186,6 +191,11 @@ public class CreateReservationFunctionValidationTests
         }
 
         public Task SendReservationReminderAsync(ReservationNotificationContextDto reservation, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task SendReservationCancellationAsync(ReservationNotificationContextDto reservation, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();
         }

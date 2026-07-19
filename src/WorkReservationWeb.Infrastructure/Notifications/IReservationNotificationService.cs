@@ -7,4 +7,6 @@ public interface IReservationNotificationService
     Task SendReservationConfirmationAsync(ReservationNotificationContextDto reservation, CancellationToken cancellationToken);
 
     Task SendReservationReminderAsync(ReservationNotificationContextDto reservation, CancellationToken cancellationToken);
+
+    Task SendReservationCancellationAsync(ReservationNotificationContextDto reservation, CancellationToken cancellationToken);
 }

@@ -19,6 +19,13 @@ internal static class ReservationNotificationContentFactory
             CreateBody("This is a reminder for your upcoming reservation.", reservation));
     }
 
+    public static (string Subject, string Body) CreateCancellation(ReservationNotificationContextDto reservation)
+    {
+        return (
+            $"Reservation cancelled: {reservation.ServiceTitle}",
+            CreateBody("Your reservation has been cancelled.", reservation));
+    }
+
     private static string CreateBody(string intro, ReservationNotificationContextDto reservation)
     {
         return string.Join(Environment.NewLine, new[]

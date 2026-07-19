@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using WorkReservationWeb.Infrastructure.Cosmos;
 using WorkReservationWeb.Infrastructure.Scheduling;
+using WorkReservationWeb.Shared;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Infrastructure.Services;
@@ -201,6 +202,74 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
             .ToArray();
 
         return Task.FromResult<IReadOnlyList<ReservationSummaryDto>>(result);
+    }
+
+    public Task<CancelReservationResultDto> CancelReservationAsync(string reservationId, CancellationToken cancellationToken)
+    {
+        lock (sync)
+        {
+            if (!reservations.TryGetValue(reservationId, out var reservation))
+            {
+                return Task.FromResult(new CancelReservationResultDto(
+                    false,
+                    ReservationCancelOutcome.NotFound,
+                    "Reservation was not found.",
+                    null));
+            }
+
+            if (reservation.Status == ReservationStatus.Cancelled)
+            {
+                return Task.FromResult(new CancelReservationResultDto(
+                    false,
+                    ReservationCancelOutcome.AlreadyCancelled,
+                    "Reservation is already cancelled.",
+                    null));
+            }
+
+            reservation.Status = ReservationStatus.Cancelled;
+            reservations[reservation.Id] = reservation;
+
+            DateTimeOffset slotStartUtc = default;
+            DateTimeOffset slotEndUtc = default;
+            if (slots.TryGetValue(reservation.SlotId, out var slot))
+            {
+                slot.ReservedCount = Math.Max(0, slot.ReservedCount - 1);
+                if (slot.Status == SlotStatus.Full && slot.ReservedCount < slot.Capacity)
+                {
+                    slot.Status = SlotStatus.Available;
+                }
+
+                slot.Etag = CreateEtag();
+                slots[slot.Id] = slot;
+                slotStartUtc = slot.StartUtc;
+                slotEndUtc = slot.EndUtc;
+            }
+            else if (ReservationSlotIdentifier.TryParseStartUtc(reservation.SlotId, out var parsedStartUtc))
+            {
+                slotStartUtc = parsedStartUtc;
+                slotEndUtc = parsedStartUtc;
+            }
+
+            serviceOffers.TryGetValue(reservation.ServiceOfferId, out var serviceOffer);
+
+            return Task.FromResult(new CancelReservationResultDto(
+                true,
+                ReservationCancelOutcome.Cancelled,
+                "Reservation cancelled.",
+                new ReservationNotificationContextDto(
+                    reservation.Id,
+                    reservation.ServiceOfferId,
+                    serviceOffer?.Title ?? reservation.ServiceOfferId,
+                    reservation.SlotId,
+                    slotStartUtc,
+                    slotEndUtc,
+                    reservation.CustomerName,
+                    reservation.CustomerEmail,
+                    reservation.Note,
+                    reservation.CreatedAtUtc,
+                    reservation.ConfirmationSentAtUtc,
+                    reservation.ReminderSentAtUtc)));
+        }
     }
 
     public Task MarkReservationConfirmationSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)

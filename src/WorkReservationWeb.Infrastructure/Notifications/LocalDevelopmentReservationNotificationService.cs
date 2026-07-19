@@ -25,6 +25,12 @@ public sealed class LocalDevelopmentReservationNotificationService : IReservatio
         return WriteMessageAsync("reminder", reservation, content.Subject, content.Body, cancellationToken);
     }
 
+    public Task SendReservationCancellationAsync(ReservationNotificationContextDto reservation, CancellationToken cancellationToken)
+    {
+        var content = ReservationNotificationContentFactory.CreateCancellation(reservation);
+        return WriteMessageAsync("cancellation", reservation, content.Subject, content.Body, cancellationToken);
+    }
+
     private Task WriteMessageAsync(string kind, ReservationNotificationContextDto reservation, string subject, string body, CancellationToken cancellationToken)
     {
         var fileName = $"{DateTimeOffset.UtcNow:yyyyMMddHHmmss}_{kind}_{reservation.ReservationId}.json";

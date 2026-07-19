@@ -27,6 +27,12 @@ public sealed class AzureCommunicationReservationNotificationService : IReservat
         return SendAsync(reservation.CustomerEmail, content.Subject, content.Body, cancellationToken);
     }
 
+    public Task SendReservationCancellationAsync(ReservationNotificationContextDto reservation, CancellationToken cancellationToken)
+    {
+        var content = ReservationNotificationContentFactory.CreateCancellation(reservation);
+        return SendAsync(reservation.CustomerEmail, content.Subject, content.Body, cancellationToken);
+    }
+
     private async Task SendAsync(string recipientAddress, string subject, string body, CancellationToken cancellationToken)
     {
         var content = new EmailContent(subject)

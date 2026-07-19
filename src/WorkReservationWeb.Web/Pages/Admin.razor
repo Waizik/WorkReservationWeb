@@ -353,35 +353,47 @@
 	}
 	else
 	{
-		<table class="table table-hover align-middle">
-			<thead>
-				<tr>
-					<th>Created</th>
-					<th>Customer</th>
-					<th>Email</th>
-					<th>Service</th>
-					<th>Slot</th>
-					<th>Confirmation</th>
-					<th>Reminder</th>
-					<th>Status</th>
-				</tr>
-				</thead>
-			<tbody>
-				@foreach (var reservation in reservations)
-				{
+		<div class="table-responsive">
+			<table class="table table-hover align-middle">
+				<thead>
 					<tr>
-						<td>@reservation.CreatedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
-						<td>@reservation.CustomerName</td>
-						<td>@reservation.CustomerEmail</td>
-						<td>@reservation.ServiceOfferId</td>
-						<td>@reservation.SlotId</td>
-						<td>@FormatNotificationStatus(reservation.ConfirmationSentAtUtc)</td>
-						<td>@FormatNotificationStatus(reservation.ReminderSentAtUtc)</td>
-						<td>@reservation.Status</td>
+						<th>Created</th>
+						<th>Customer</th>
+						<th>Service</th>
+						<th>Slot</th>
+						<th>Confirmation</th>
+						<th>Reminder</th>
+						<th>Status</th>
+						<th></th>
 					</tr>
-				}
-			</tbody>
-		</table>
+				</thead>
+				<tbody>
+					@foreach (var reservation in reservations)
+					{
+						<tr>
+							<td class="text-nowrap">@reservation.CreatedAtUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+							<td>
+								<div>@reservation.CustomerName</div>
+								<div class="text-muted small">@reservation.CustomerEmail</div>
+							</td>
+							<td>@GetServiceTitle(reservation.ServiceOfferId)</td>
+							<td class="text-nowrap">@FormatSlot(reservation.SlotId)</td>
+							<td class="text-nowrap">@FormatNotificationStatus(reservation.ConfirmationSentAtUtc)</td>
+							<td class="text-nowrap">@FormatNotificationStatus(reservation.ReminderSentAtUtc)</td>
+							<td>
+								<span class="badge @(reservation.Status == "Cancelled" ? "text-bg-secondary" : "text-bg-success")">@reservation.Status</span>
+							</td>
+							<td class="text-end">
+								@if (reservation.Status != "Cancelled")
+								{
+									<button class="btn btn-sm btn-outline-danger" @onclick="() => CancelReservationAsync(reservation)" disabled="@isCancellingReservation">Cancel</button>
+								}
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
 	}
 </section>
 
@@ -394,6 +406,7 @@
 	private bool isSavingServiceOffer;
 	private bool isUploadingImage;
 	private bool isProcessingReminders;
+	private bool isCancellingReservation;
 	private string? reservationsErrorMessage;
 	private string? serviceOffersErrorMessage;
 	private string? serviceOfferMessage;
@@ -1029,6 +1042,41 @@
 	private void RemoveImage(string imageUrl)
 	{
 		serviceImageUrls.RemoveAll(url => string.Equals(url, imageUrl, StringComparison.OrdinalIgnoreCase));
+	}
+
+	private async Task CancelReservationAsync(ReservationSummaryDto reservation)
+	{
+		reminderMessage = null;
+		isCancellingReservation = true;
+
+		try
+		{
+			var result = await AdminApiClient.CancelReservationAsync(reservation.Id, CancellationToken.None);
+			await LoadReservationsAsync();
+			reminderMessageClass = result?.Success == true ? "text-success" : "text-danger";
+			reminderMessage = result?.Message ?? "Cancellation failed unexpectedly.";
+		}
+		catch
+		{
+			reminderMessageClass = "text-danger";
+			reminderMessage = "Failed to cancel the reservation.";
+		}
+		finally
+		{
+			isCancellingReservation = false;
+		}
+	}
+
+	private string GetServiceTitle(string serviceOfferId)
+	{
+		return serviceOffers.FirstOrDefault(serviceOffer => serviceOffer.Id == serviceOfferId)?.Title ?? serviceOfferId;
+	}
+
+	private static string FormatSlot(string slotId)
+	{
+		return WorkReservationWeb.Shared.ReservationSlotIdentifier.TryParseStartUtc(slotId, out var startUtc)
+			? startUtc.LocalDateTime.ToString("yyyy-MM-dd HH:mm")
+			: slotId;
 	}
 
 	private static string FormatNotificationStatus(DateTimeOffset? sentAtUtc)

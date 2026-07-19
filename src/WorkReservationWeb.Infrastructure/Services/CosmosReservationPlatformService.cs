@@ -1,6 +1,7 @@
 using Microsoft.Azure.Cosmos;
 using WorkReservationWeb.Infrastructure.Cosmos;
 using WorkReservationWeb.Infrastructure.Scheduling;
+using WorkReservationWeb.Shared;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Infrastructure.Services;
@@ -402,6 +403,102 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
             document.ReminderSentAtUtc), cancellationToken);
 
         return results.OrderByDescending(x => x.CreatedAtUtc).ToArray();
+    }
+
+    public async Task<CancelReservationResultDto> CancelReservationAsync(string reservationId, CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+        var reservation = await TryGetReservationAsync(currentContainer, reservationId, cancellationToken);
+        if (reservation is null)
+        {
+            return new CancelReservationResultDto(false, ReservationCancelOutcome.NotFound, "Reservation was not found.", null);
+        }
+
+        if (string.Equals(reservation.Status, ReservationStatus.Cancelled.ToString(), StringComparison.Ordinal))
+        {
+            return new CancelReservationResultDto(false, ReservationCancelOutcome.AlreadyCancelled, "Reservation is already cancelled.", null);
+        }
+
+        ItemResponse<ReservationSlotDocument>? slotResponse;
+        try
+        {
+            slotResponse = await currentContainer.ReadItemAsync<ReservationSlotDocument>(
+                reservation.SlotId,
+                new PartitionKey(reservation.ServiceOfferId),
+                cancellationToken: cancellationToken);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            slotResponse = null;
+        }
+
+        var partitionKey = new PartitionKey(reservation.ServiceOfferId);
+        var batch = currentContainer.CreateTransactionalBatch(partitionKey)
+            .PatchItem(reservation.id, [PatchOperation.Set("/Status", ReservationStatus.Cancelled.ToString())]);
+
+        if (slotResponse is not null)
+        {
+            var slot = slotResponse.Resource;
+            var updatedReservedCount = Math.Max(0, slot.ReservedCount - 1);
+            var updatedSlot = new ReservationSlotDocument
+            {
+                id = slot.id,
+                partitionKey = slot.partitionKey,
+                Type = slot.Type,
+                ServiceOfferId = slot.ServiceOfferId,
+                StartUtc = slot.StartUtc,
+                EndUtc = slot.EndUtc,
+                Capacity = slot.Capacity,
+                ReservedCount = updatedReservedCount,
+                Status = updatedReservedCount < slot.Capacity ? SlotStatus.Available.ToString() : SlotStatus.Full.ToString()
+            };
+
+            batch = batch.ReplaceItem(slot.id, updatedSlot, new TransactionalBatchItemRequestOptions { IfMatchEtag = slotResponse.ETag });
+        }
+
+        using var batchResponse = await batch.ExecuteAsync(cancellationToken);
+        if (!batchResponse.IsSuccessStatusCode)
+        {
+            if (batchResponse.StatusCode == System.Net.HttpStatusCode.PreconditionFailed ||
+                batchResponse.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                return new CancelReservationResultDto(
+                    false,
+                    ReservationCancelOutcome.Conflict,
+                    "Reservation changed before the cancellation could be completed. Try again.",
+                    null);
+            }
+
+            throw new CosmosException(
+                batchResponse.ErrorMessage,
+                batchResponse.StatusCode,
+                0,
+                batchResponse.ActivityId,
+                batchResponse.RequestCharge);
+        }
+
+        var serviceOffer = await TryGetServiceOfferAsync(currentContainer, reservation.ServiceOfferId, cancellationToken);
+        var slotStartUtc = slotResponse?.Resource.StartUtc
+            ?? (ReservationSlotIdentifier.TryParseStartUtc(reservation.SlotId, out var parsedStartUtc) ? parsedStartUtc : default);
+        var slotEndUtc = slotResponse?.Resource.EndUtc ?? slotStartUtc;
+
+        return new CancelReservationResultDto(
+            true,
+            ReservationCancelOutcome.Cancelled,
+            "Reservation cancelled.",
+            new ReservationNotificationContextDto(
+                reservation.id,
+                reservation.ServiceOfferId,
+                serviceOffer?.Title ?? reservation.ServiceOfferId,
+                reservation.SlotId,
+                slotStartUtc,
+                slotEndUtc,
+                reservation.CustomerName,
+                reservation.CustomerEmail,
+                reservation.Note,
+                reservation.CreatedAtUtc,
+                reservation.ConfirmationSentAtUtc,
+                reservation.ReminderSentAtUtc));
     }
 
     public async Task MarkReservationConfirmationSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)

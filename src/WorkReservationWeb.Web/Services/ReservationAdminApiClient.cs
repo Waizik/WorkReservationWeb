@@ -30,6 +30,15 @@ public sealed class ReservationAdminApiClient(HttpClient httpClient, IConfigurat
         return payload ?? [];
     }
 
+    public async Task<CancelReservationResultDto?> CancelReservationAsync(string reservationId, CancellationToken cancellationToken)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Post, $"api/management/reservations/{reservationId}/cancel", cancellationToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+
+        // The API returns a CancelReservationResultDto body for every outcome (200/404/409).
+        return await response.Content.ReadFromJsonAsync<CancelReservationResultDto>(cancellationToken: cancellationToken);
+    }
+
     public async Task<ProcessReservationRemindersResultDto?> ProcessReservationRemindersAsync(CancellationToken cancellationToken)
     {
         using var request = await CreateRequestAsync(HttpMethod.Post, "api/management/reservations/reminders/process", cancellationToken);

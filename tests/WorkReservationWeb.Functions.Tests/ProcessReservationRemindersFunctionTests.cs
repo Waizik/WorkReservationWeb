@@ -130,6 +130,7 @@ public sealed class ProcessReservationRemindersFunctionTests
         public Task<bool> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SlotScheduleDto?> GetSlotScheduleAsync(string serviceOfferId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SlotScheduleDto> UpsertSlotScheduleAsync(SlotScheduleDto schedule, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<CancelReservationResultDto> CancelReservationAsync(string reservationId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public string? MarkedReminderReservationId { get; private set; }
     }
@@ -145,5 +146,7 @@ public sealed class ProcessReservationRemindersFunctionTests
             ReminderCallCount++;
             return Task.CompletedTask;
         }
+
+        public Task SendReservationCancellationAsync(ReservationNotificationContextDto reservation, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }
