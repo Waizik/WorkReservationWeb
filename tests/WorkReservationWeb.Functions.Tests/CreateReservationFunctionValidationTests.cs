@@ -157,6 +157,16 @@ public class CreateReservationFunctionValidationTests
             throw new NotSupportedException();
         }
 
+        public Task<SlotScheduleDto?> GetSlotScheduleAsync(string serviceOfferId, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<SlotScheduleDto> UpsertSlotScheduleAsync(SlotScheduleDto schedule, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
         public Task<bool> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken)
         {
             throw new NotSupportedException();

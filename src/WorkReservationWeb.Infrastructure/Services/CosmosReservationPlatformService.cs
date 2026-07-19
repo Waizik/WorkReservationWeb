@@ -1,5 +1,6 @@
 using Microsoft.Azure.Cosmos;
 using WorkReservationWeb.Infrastructure.Cosmos;
+using WorkReservationWeb.Infrastructure.Scheduling;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Infrastructure.Services;
@@ -59,6 +60,13 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
         }
         catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
+            var schedule = await TryGetSlotScheduleAsync(currentContainer, serviceOfferId, cancellationToken);
+            if (schedule is not null &&
+                SlotScheduleCalculator.ResolveSlot(ToDto(schedule), slotId, DateTimeOffset.UtcNow) is { } scheduled)
+            {
+                return ToVirtualDto(serviceOfferId, scheduled);
+            }
+
             return null;
         }
     }
@@ -102,28 +110,56 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
     public async Task<IReadOnlyList<ReservationSlotDto>> GetAvailableSlotsAsync(string serviceOfferId, CancellationToken cancellationToken)
     {
         var currentContainer = await GetContainerAsync(cancellationToken);
-        var query = new QueryDefinition(
-            "SELECT * FROM c WHERE c.Type = @type AND c.ServiceOfferId = @serviceOfferId AND c.Status = @status AND c.StartUtc >= @now")
+        var schedule = await TryGetSlotScheduleAsync(currentContainer, serviceOfferId, cancellationToken);
+        if (schedule is null)
+        {
+            return [];
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var scheduledSlots = SlotScheduleCalculator.GetUpcomingSlots(ToDto(schedule), now);
+
+        var materializedQuery = new QueryDefinition(
+            "SELECT * FROM c WHERE c.Type = @type AND c.ServiceOfferId = @serviceOfferId AND c.StartUtc >= @now")
             .WithParameter("@type", CosmosDocumentTypes.ReservationSlot)
             .WithParameter("@serviceOfferId", serviceOfferId)
-            .WithParameter("@status", SlotStatus.Available.ToString())
-            .WithParameter("@now", DateTimeOffset.UtcNow);
+            .WithParameter("@now", now);
 
-        var results = await ReadAllAsync<ReservationSlotDocument, ReservationSlotDto>(currentContainer, query, document => new ReservationSlotDto(
-            document.id,
-            document.ServiceOfferId,
-            document.StartUtc,
-            document.EndUtc,
-            document.Capacity,
-            document.ReservedCount,
-            document.Status,
-            string.Empty), cancellationToken);
+        var materializedSlots = await ReadAllAsync<ReservationSlotDocument, ReservationSlotDocument>(
+            currentContainer,
+            materializedQuery,
+            static document => document,
+            cancellationToken);
+        var materializedById = materializedSlots.ToDictionary(document => document.id, StringComparer.Ordinal);
 
-        foreach (var slot in results)
+        var results = new List<ReservationSlotDto>();
+        foreach (var scheduled in scheduledSlots)
         {
-            var response = await currentContainer.ReadItemAsync<ReservationSlotDocument>(slot.Id, new PartitionKey(serviceOfferId), cancellationToken: cancellationToken);
-            var index = results.FindIndex(candidate => candidate.Id == slot.Id);
-            results[index] = slot with { Etag = response.ETag };
+            if (!materializedById.TryGetValue(scheduled.Id, out var materialized))
+            {
+                results.Add(ToVirtualDto(serviceOfferId, scheduled));
+                continue;
+            }
+
+            if (!string.Equals(materialized.Status, SlotStatus.Available.ToString(), StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var response = await currentContainer.ReadItemAsync<ReservationSlotDocument>(
+                materialized.id,
+                new PartitionKey(serviceOfferId),
+                cancellationToken: cancellationToken);
+
+            results.Add(new ReservationSlotDto(
+                materialized.id,
+                materialized.ServiceOfferId,
+                materialized.StartUtc,
+                materialized.EndUtc,
+                materialized.Capacity,
+                materialized.ReservedCount,
+                materialized.Status,
+                response.ETag));
         }
 
         return results.OrderBy(x => x.StartUtc).ToArray();
@@ -132,10 +168,24 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
     public async Task<CreateReservationResultDto> CreateReservationAsync(CreateReservationRequestDto request, CancellationToken cancellationToken)
     {
         var currentContainer = await GetContainerAsync(cancellationToken);
-        var slotResponse = await currentContainer.ReadItemAsync<ReservationSlotDocument>(
-            request.SlotId,
-            new PartitionKey(request.ServiceOfferId),
-            cancellationToken: cancellationToken);
+
+        ItemResponse<ReservationSlotDocument>? slotResponse;
+        try
+        {
+            slotResponse = await currentContainer.ReadItemAsync<ReservationSlotDocument>(
+                request.SlotId,
+                new PartitionKey(request.ServiceOfferId),
+                cancellationToken: cancellationToken);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            slotResponse = null;
+        }
+
+        if (slotResponse is null)
+        {
+            return await CreateReservationForVirtualSlotAsync(currentContainer, request, cancellationToken);
+        }
 
         var slot = slotResponse.Resource;
         if (!string.Equals(slotResponse.ETag, request.SlotEtag, StringComparison.Ordinal))
@@ -217,6 +267,112 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
         }
 
         var refreshedSlot = await currentContainer.ReadItemAsync<ReservationSlotDocument>(slot.id, new PartitionKey(request.ServiceOfferId), cancellationToken: cancellationToken);
+
+        return new CreateReservationResultDto(
+            true,
+            ReservationCreateOutcome.Created,
+            reservationId,
+            "Reservation created.",
+            refreshedSlot.ETag);
+    }
+
+    // Books a slot that only exists in the schedule so far: the slot document is created in the same
+    // transactional batch as the reservation. A concurrent booking of the same virtual slot loses on
+    // the CreateItem id conflict and gets the standard Conflict result with the fresh etag to retry.
+    private async Task<CreateReservationResultDto> CreateReservationForVirtualSlotAsync(
+        Container currentContainer,
+        CreateReservationRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var schedule = await TryGetSlotScheduleAsync(currentContainer, request.ServiceOfferId, cancellationToken);
+        var scheduled = schedule is null
+            ? null
+            : SlotScheduleCalculator.ResolveSlot(ToDto(schedule), request.SlotId, DateTimeOffset.UtcNow);
+
+        if (scheduled is null)
+        {
+            return new CreateReservationResultDto(
+                false,
+                ReservationCreateOutcome.ValidationFailed,
+                null,
+                "Selected time slot is not available.",
+                null);
+        }
+
+        if (!string.IsNullOrEmpty(request.SlotEtag))
+        {
+            return new CreateReservationResultDto(
+                false,
+                ReservationCreateOutcome.Conflict,
+                null,
+                "Slot changed before booking could be completed.",
+                string.Empty);
+        }
+
+        var newSlot = new ReservationSlotDocument
+        {
+            id = scheduled.Id,
+            partitionKey = request.ServiceOfferId,
+            Type = CosmosDocumentTypes.ReservationSlot,
+            ServiceOfferId = request.ServiceOfferId,
+            StartUtc = scheduled.StartUtc,
+            EndUtc = scheduled.EndUtc,
+            Capacity = scheduled.Capacity,
+            ReservedCount = 1,
+            Status = 1 >= scheduled.Capacity ? SlotStatus.Full.ToString() : SlotStatus.Available.ToString()
+        };
+
+        var reservationId = $"res_{Guid.NewGuid():N}";
+        var reservation = new ReservationDocument
+        {
+            id = reservationId,
+            partitionKey = request.ServiceOfferId,
+            Type = CosmosDocumentTypes.Reservation,
+            ServiceOfferId = request.ServiceOfferId,
+            SlotId = request.SlotId,
+            CustomerName = request.CustomerName.Trim(),
+            CustomerEmail = request.CustomerEmail.Trim(),
+            Note = request.Note?.Trim(),
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            Status = ReservationStatus.Confirmed.ToString(),
+            ConfirmationSentAtUtc = null,
+            ReminderSentAtUtc = null
+        };
+
+        var batch = currentContainer.CreateTransactionalBatch(new PartitionKey(request.ServiceOfferId))
+            .CreateItem(newSlot)
+            .CreateItem(reservation);
+
+        using var batchResponse = await batch.ExecuteAsync(cancellationToken);
+        if (!batchResponse.IsSuccessStatusCode)
+        {
+            if (batchResponse.StatusCode == System.Net.HttpStatusCode.PreconditionFailed ||
+                batchResponse.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                var currentSlot = await currentContainer.ReadItemAsync<ReservationSlotDocument>(
+                    newSlot.id,
+                    new PartitionKey(request.ServiceOfferId),
+                    cancellationToken: cancellationToken);
+                return new CreateReservationResultDto(
+                    false,
+                    ReservationCreateOutcome.Conflict,
+                    null,
+                    "Slot changed before booking could be completed.",
+                    currentSlot.ETag);
+            }
+
+            throw new CosmosException(
+                batchResponse.ErrorMessage,
+                batchResponse.StatusCode,
+                0,
+                batchResponse.ActivityId,
+                batchResponse.RequestCharge);
+        }
+
+        var refreshedSlot = await currentContainer.ReadItemAsync<ReservationSlotDocument>(
+            newSlot.id,
+            new PartitionKey(request.ServiceOfferId),
+            cancellationToken: cancellationToken);
 
         return new CreateReservationResultDto(
             true,
@@ -402,13 +558,61 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
                 serviceOfferId,
                 new PartitionKey(serviceOfferId),
                 cancellationToken: cancellationToken);
-
-            return true;
         }
         catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return false;
         }
+
+        try
+        {
+            await currentContainer.DeleteItemAsync<SlotScheduleDocument>(
+                SlotScheduleDocument.DocumentId,
+                new PartitionKey(serviceOfferId),
+                cancellationToken: cancellationToken);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+        }
+
+        return true;
+    }
+
+    public async Task<SlotScheduleDto?> GetSlotScheduleAsync(string serviceOfferId, CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+        var schedule = await TryGetSlotScheduleAsync(currentContainer, serviceOfferId, cancellationToken);
+        return schedule is null ? null : ToDto(schedule);
+    }
+
+    public async Task<SlotScheduleDto> UpsertSlotScheduleAsync(SlotScheduleDto schedule, CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+
+        var document = new SlotScheduleDocument
+        {
+            id = SlotScheduleDocument.DocumentId,
+            partitionKey = schedule.ServiceOfferId,
+            Type = CosmosDocumentTypes.SlotSchedule,
+            ServiceOfferId = schedule.ServiceOfferId,
+            DaysOfWeek = [.. schedule.DaysOfWeek],
+            Times = [.. schedule.Times],
+            SlotDurationMinutes = schedule.SlotDurationMinutes,
+            Capacity = schedule.Capacity,
+            BookingWindowDays = schedule.BookingWindowDays,
+            TimeZoneId = schedule.TimeZoneId,
+            Overrides = schedule.Overrides.ToDictionary(
+                pair => pair.Key,
+                pair => new SlotScheduleOverrideDocument
+                {
+                    Closed = pair.Value.Closed,
+                    Times = pair.Value.Times?.ToList()
+                },
+                StringComparer.Ordinal)
+        };
+
+        await currentContainer.UpsertItemAsync(document, new PartitionKey(schedule.ServiceOfferId), cancellationToken: cancellationToken);
+        return schedule;
     }
 
     public async ValueTask DisposeAsync()
@@ -464,6 +668,55 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
         {
             return null;
         }
+    }
+
+    private static async Task<SlotScheduleDocument?> TryGetSlotScheduleAsync(
+        Container currentContainer,
+        string serviceOfferId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await currentContainer.ReadItemAsync<SlotScheduleDocument>(
+                SlotScheduleDocument.DocumentId,
+                new PartitionKey(serviceOfferId),
+                cancellationToken: cancellationToken);
+
+            return response.Resource;
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    private static SlotScheduleDto ToDto(SlotScheduleDocument document)
+    {
+        return new SlotScheduleDto(
+            document.ServiceOfferId,
+            document.DaysOfWeek,
+            document.Times,
+            document.SlotDurationMinutes,
+            document.Capacity,
+            document.BookingWindowDays,
+            document.TimeZoneId,
+            document.Overrides.ToDictionary(
+                pair => pair.Key,
+                pair => new SlotScheduleOverrideDto(pair.Value.Closed, pair.Value.Times),
+                StringComparer.Ordinal));
+    }
+
+    private static ReservationSlotDto ToVirtualDto(string serviceOfferId, ScheduledSlot scheduled)
+    {
+        return new ReservationSlotDto(
+            scheduled.Id,
+            serviceOfferId,
+            scheduled.StartUtc,
+            scheduled.EndUtc,
+            scheduled.Capacity,
+            0,
+            SlotStatus.Available.ToString(),
+            string.Empty);
     }
 
     private static async Task<ReservationDocument?> TryGetReservationAsync(

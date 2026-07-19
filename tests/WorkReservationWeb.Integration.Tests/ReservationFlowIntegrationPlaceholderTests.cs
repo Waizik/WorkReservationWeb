@@ -288,6 +288,13 @@ public class ReservationFlowIntegrationTests
         var functionContext = new TestFunctionContext(serviceProvider);
         var deleteServiceOfferFunction = new DeleteServiceOfferFunction(service);
 
+        // Slots are materialized on booking, so create a reservation to link a slot and a reservation to the offer.
+        var slot = (await service.GetAvailableSlotsAsync("srv_consultation", CancellationToken.None)).First();
+        var booking = await service.CreateReservationAsync(
+            new CreateReservationRequestDto("srv_consultation", slot.Id, slot.Etag, "Blocking User", "blocking@example.com", null),
+            CancellationToken.None);
+        Assert.True(booking.Success);
+
         var deleteRequest = new TestHttpRequestData(
             functionContext,
             "DELETE",

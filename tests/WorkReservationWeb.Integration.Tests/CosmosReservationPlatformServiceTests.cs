@@ -27,8 +27,23 @@ public sealed class CosmosReservationPlatformServiceTests
         var serviceOffers = await service.GetActiveServiceOffersAsync(CancellationToken.None);
         var serviceOffer = Assert.Single(serviceOffers);
 
+        // Hourly slots on every day of week guarantee an upcoming virtual slot regardless of when the test runs.
+        await service.UpsertSlotScheduleAsync(
+            new SlotScheduleDto(
+                serviceOffer.Id,
+                Enum.GetValues<DayOfWeek>(),
+                Enumerable.Range(0, 24).Select(hour => $"{hour:00}:00").ToArray(),
+                SlotDurationMinutes: 60,
+                Capacity: 1,
+                BookingWindowDays: 2,
+                TimeZoneId: "UTC",
+                Overrides: new Dictionary<string, SlotScheduleOverrideDto>()),
+            CancellationToken.None);
+
         var availableSlots = await service.GetAvailableSlotsAsync(serviceOffer.Id, CancellationToken.None);
-        var slot = Assert.Single(availableSlots);
+        Assert.NotEmpty(availableSlots);
+        var slot = availableSlots[0];
+        Assert.Equal(string.Empty, slot.Etag);
 
         var result = await service.CreateReservationAsync(
             new CreateReservationRequestDto(
@@ -63,7 +78,7 @@ public sealed class CosmosReservationPlatformServiceTests
         Assert.Equal("Confirmed", reservation.Status);
 
         var remainingSlots = await service.GetAvailableSlotsAsync(serviceOffer.Id, CancellationToken.None);
-        Assert.Empty(remainingSlots);
+        Assert.DoesNotContain(remainingSlots, candidate => candidate.Id == slot.Id);
     }
 
     private sealed record CosmosTestSettings(string ConnectionString, string DatabasePrefix, string ContainerName)
@@ -150,22 +165,6 @@ public sealed class CosmosReservationPlatformServiceTests
                 },
                 new PartitionKey(serviceOfferId),
                 cancellationToken: cancellationToken);
-
-            await container.CreateItemAsync(
-                new ReservationSlotSeedDocument
-                {
-                    id = "slot_cosmos_test",
-                    partitionKey = serviceOfferId,
-                    Type = "reservation-slot",
-                    ServiceOfferId = serviceOfferId,
-                    StartUtc = DateTimeOffset.UtcNow.AddHours(2),
-                    EndUtc = DateTimeOffset.UtcNow.AddHours(3),
-                    Capacity = 1,
-                    ReservedCount = 0,
-                    Status = "Available"
-                },
-                new PartitionKey(serviceOfferId),
-                cancellationToken: cancellationToken);
         }
 
         public async ValueTask DisposeAsync()
@@ -194,24 +193,4 @@ public sealed class CosmosReservationPlatformServiceTests
         public bool Active { get; init; }
     }
 
-    private sealed class ReservationSlotSeedDocument
-    {
-        public required string id { get; init; }
-
-        public required string partitionKey { get; init; }
-
-        public required string Type { get; init; }
-
-        public required string ServiceOfferId { get; init; }
-
-        public required DateTimeOffset StartUtc { get; init; }
-
-        public required DateTimeOffset EndUtc { get; init; }
-
-        public int Capacity { get; init; }
-
-        public int ReservedCount { get; init; }
-
-        public required string Status { get; init; }
-    }
 }

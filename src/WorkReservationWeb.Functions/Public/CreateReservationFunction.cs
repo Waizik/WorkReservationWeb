@@ -26,9 +26,10 @@ public sealed class CreateReservationFunction(
             return badRequest;
         }
 
+        // SlotEtag may legitimately be empty: virtual slots computed from the schedule have no etag yet.
         if (string.IsNullOrWhiteSpace(payload.ServiceOfferId) ||
             string.IsNullOrWhiteSpace(payload.SlotId) ||
-            string.IsNullOrWhiteSpace(payload.SlotEtag) ||
+            payload.SlotEtag is null ||
             string.IsNullOrWhiteSpace(payload.CustomerName) ||
             string.IsNullOrWhiteSpace(payload.CustomerEmail))
         {

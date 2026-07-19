@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using WorkReservationWeb.Infrastructure.Cosmos;
+using WorkReservationWeb.Infrastructure.Scheduling;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Infrastructure.Services;
@@ -9,6 +10,7 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
     private readonly ConcurrentDictionary<string, ServiceOffer> serviceOffers = new();
     private readonly ConcurrentDictionary<string, ReservationSlot> slots = new();
     private readonly ConcurrentDictionary<string, Reservation> reservations = new();
+    private readonly ConcurrentDictionary<string, SlotScheduleDto> schedules = new();
 
     private readonly Lock sync = new();
 
@@ -26,12 +28,18 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
 
     public Task<ReservationSlotDto?> GetReservationSlotAsync(string serviceOfferId, string slotId, CancellationToken cancellationToken)
     {
-        if (!slots.TryGetValue(slotId, out var slot) || !string.Equals(slot.ServiceOfferId, serviceOfferId, StringComparison.Ordinal))
+        if (slots.TryGetValue(slotId, out var slot) && string.Equals(slot.ServiceOfferId, serviceOfferId, StringComparison.Ordinal))
         {
-            return Task.FromResult<ReservationSlotDto?>(null);
+            return Task.FromResult<ReservationSlotDto?>(ToDto(slot));
         }
 
-        return Task.FromResult<ReservationSlotDto?>(ToDto(slot));
+        if (schedules.TryGetValue(serviceOfferId, out var schedule) &&
+            SlotScheduleCalculator.ResolveSlot(schedule, slotId, DateTimeOffset.UtcNow) is { } scheduled)
+        {
+            return Task.FromResult<ReservationSlotDto?>(ToVirtualDto(serviceOfferId, scheduled));
+        }
+
+        return Task.FromResult<ReservationSlotDto?>(null);
     }
 
     public Task<IReadOnlyList<ServiceOfferDto>> GetServiceOffersAsync(CancellationToken cancellationToken)
@@ -60,13 +68,24 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
     public Task<IReadOnlyList<ReservationSlotDto>> GetAvailableSlotsAsync(string serviceOfferId, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var result = slots
-            .Values
-            .Where(x => x.ServiceOfferId == serviceOfferId)
-            .Where(x => x.StartUtc >= now)
-            .Where(x => x.Status == SlotStatus.Available)
-            .OrderBy(x => x.StartUtc)
-            .Select(ToDto)
+        if (!schedules.TryGetValue(serviceOfferId, out var schedule))
+        {
+            return Task.FromResult<IReadOnlyList<ReservationSlotDto>>([]);
+        }
+
+        var result = SlotScheduleCalculator.GetUpcomingSlots(schedule, now)
+            .Select(scheduled =>
+            {
+                if (slots.TryGetValue(scheduled.Id, out var materialized) &&
+                    string.Equals(materialized.ServiceOfferId, serviceOfferId, StringComparison.Ordinal))
+                {
+                    return materialized.Status == SlotStatus.Available ? ToDto(materialized) : null;
+                }
+
+                return ToVirtualDto(serviceOfferId, scheduled);
+            })
+            .Where(slot => slot is not null)
+            .Select(slot => slot!)
             .ToArray();
 
         return Task.FromResult<IReadOnlyList<ReservationSlotDto>>(result);
@@ -76,7 +95,33 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
     {
         lock (sync)
         {
-            var slot = slots[request.SlotId];
+            if (!slots.TryGetValue(request.SlotId, out var slot) ||
+                !string.Equals(slot.ServiceOfferId, request.ServiceOfferId, StringComparison.Ordinal))
+            {
+                if (!schedules.TryGetValue(request.ServiceOfferId, out var schedule) ||
+                    SlotScheduleCalculator.ResolveSlot(schedule, request.SlotId, DateTimeOffset.UtcNow) is not { } scheduled)
+                {
+                    return Task.FromResult(new CreateReservationResultDto(
+                        false,
+                        ReservationCreateOutcome.ValidationFailed,
+                        null,
+                        "Selected time slot is not available.",
+                        null));
+                }
+
+                slot = new ReservationSlot
+                {
+                    Id = scheduled.Id,
+                    ServiceOfferId = request.ServiceOfferId,
+                    StartUtc = scheduled.StartUtc,
+                    EndUtc = scheduled.EndUtc,
+                    Capacity = scheduled.Capacity,
+                    ReservedCount = 0,
+                    Status = SlotStatus.Available,
+                    Etag = string.Empty
+                };
+                slots[slot.Id] = slot;
+            }
 
             if (!string.Equals(slot.Etag, request.SlotEtag, StringComparison.Ordinal))
             {
@@ -244,7 +289,26 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
             return Task.FromResult(false);
         }
 
-        return Task.FromResult(serviceOffers.TryRemove(serviceOfferId, out _));
+        if (!serviceOffers.TryRemove(serviceOfferId, out _))
+        {
+            return Task.FromResult(false);
+        }
+
+        schedules.TryRemove(serviceOfferId, out _);
+        return Task.FromResult(true);
+    }
+
+    public Task<SlotScheduleDto?> GetSlotScheduleAsync(string serviceOfferId, CancellationToken cancellationToken)
+    {
+        return Task.FromResult(schedules.TryGetValue(serviceOfferId, out var schedule)
+            ? schedule
+            : null);
+    }
+
+    public Task<SlotScheduleDto> UpsertSlotScheduleAsync(SlotScheduleDto schedule, CancellationToken cancellationToken)
+    {
+        schedules[schedule.ServiceOfferId] = schedule;
+        return Task.FromResult(schedule);
     }
 
     private static ServiceOfferDto ToDto(ServiceOffer offer)
@@ -271,6 +335,19 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
             slot.Etag);
     }
 
+    private static ReservationSlotDto ToVirtualDto(string serviceOfferId, ScheduledSlot scheduled)
+    {
+        return new ReservationSlotDto(
+            scheduled.Id,
+            serviceOfferId,
+            scheduled.StartUtc,
+            scheduled.EndUtc,
+            scheduled.Capacity,
+            0,
+            SlotStatus.Available.ToString(),
+            string.Empty);
+    }
+
     private static string CreateEtag()
     {
         return Guid.NewGuid().ToString("N");
@@ -278,7 +355,7 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
 
     private void SeedIfEmpty()
     {
-        if (!serviceOffers.IsEmpty || !slots.IsEmpty)
+        if (!serviceOffers.IsEmpty || !schedules.IsEmpty)
         {
             return;
         }
@@ -295,23 +372,14 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
 
         serviceOffers[service.Id] = service;
 
-        var day = DateTimeOffset.UtcNow.Date.AddDays(1);
-        for (var i = 0; i < 4; i++)
-        {
-            var start = day.AddHours(8 + (i * 2));
-            var end = start.AddHours(1);
-            var slotId = $"slot_{start:yyyyMMddHHmm}";
-            slots[slotId] = new ReservationSlot
-            {
-                Id = slotId,
-                ServiceOfferId = service.Id,
-                StartUtc = start,
-                EndUtc = end,
-                Capacity = 2,
-                ReservedCount = 0,
-                Status = SlotStatus.Available,
-                Etag = CreateEtag()
-            };
-        }
+        schedules[service.Id] = new SlotScheduleDto(
+            service.Id,
+            [DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday],
+            ["08:00", "10:00", "12:00", "14:00"],
+            SlotDurationMinutes: 60,
+            Capacity: 2,
+            BookingWindowDays: 28,
+            TimeZoneId: "Europe/Prague",
+            Overrides: new Dictionary<string, SlotScheduleOverrideDto>());
     }
 }

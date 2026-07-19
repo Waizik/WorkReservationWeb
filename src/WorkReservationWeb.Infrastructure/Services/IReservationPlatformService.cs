@@ -27,4 +27,8 @@ public interface IReservationPlatformService
     Task<ServiceOfferDto> UpsertServiceOfferAsync(UpsertServiceOfferRequestDto request, CancellationToken cancellationToken);
 
     Task<bool> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken);
+
+    Task<SlotScheduleDto?> GetSlotScheduleAsync(string serviceOfferId, CancellationToken cancellationToken);
+
+    Task<SlotScheduleDto> UpsertSlotScheduleAsync(SlotScheduleDto schedule, CancellationToken cancellationToken);
 }

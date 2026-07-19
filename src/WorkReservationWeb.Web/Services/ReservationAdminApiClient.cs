@@ -69,6 +69,30 @@ public sealed class ReservationAdminApiClient(HttpClient httpClient, IConfigurat
         return await response.Content.ReadFromJsonAsync<ServiceOfferImageUploadResultDto>(cancellationToken: cancellationToken);
     }
 
+    public async Task<SlotScheduleDto?> GetSlotScheduleAsync(string serviceOfferId, CancellationToken cancellationToken)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Get, $"api/management/services/{serviceOfferId}/schedule", cancellationToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<SlotScheduleDto>(cancellationToken: cancellationToken);
+    }
+
+    public async Task<SlotScheduleDto?> UpsertSlotScheduleAsync(SlotScheduleDto schedule, CancellationToken cancellationToken)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Post, "api/management/schedules", cancellationToken);
+        request.Content = JsonContent.Create(schedule);
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<SlotScheduleDto>(cancellationToken: cancellationToken);
+    }
+
     public async Task<ApiErrorDto?> DeleteServiceOfferAsync(string serviceOfferId, CancellationToken cancellationToken)
     {
         using var request = await CreateRequestAsync(HttpMethod.Delete, $"api/management/services/{serviceOfferId}", cancellationToken);

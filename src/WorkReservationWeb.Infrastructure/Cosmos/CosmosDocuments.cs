@@ -5,6 +5,41 @@ internal static class CosmosDocumentTypes
     public const string ServiceOffer = "service-offer";
     public const string ReservationSlot = "reservation-slot";
     public const string Reservation = "reservation";
+    public const string SlotSchedule = "slot-schedule";
+}
+
+internal sealed class SlotScheduleDocument
+{
+    public const string DocumentId = "schedule";
+
+    public required string id { get; init; }
+
+    public required string partitionKey { get; init; }
+
+    public required string Type { get; init; }
+
+    public required string ServiceOfferId { get; init; }
+
+    public List<DayOfWeek> DaysOfWeek { get; init; } = [];
+
+    public List<string> Times { get; init; } = [];
+
+    public int SlotDurationMinutes { get; init; }
+
+    public int Capacity { get; init; }
+
+    public int BookingWindowDays { get; init; }
+
+    public required string TimeZoneId { get; init; }
+
+    public Dictionary<string, SlotScheduleOverrideDocument> Overrides { get; init; } = [];
+}
+
+internal sealed class SlotScheduleOverrideDocument
+{
+    public bool Closed { get; init; }
+
+    public List<string>? Times { get; init; }
 }
 
 internal sealed class ServiceOfferDocument

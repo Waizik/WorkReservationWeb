@@ -118,6 +118,158 @@
 	}
 </section>
 
+@if (!string.IsNullOrWhiteSpace(selectedServiceOfferId))
+{
+	<section class="mb-5">
+		<h2 class="h4">Availability Schedule</h2>
+		<p class="form-text">
+			Pick the weekdays and times that repeat every week. The times apply to all selected days and stay in effect
+			for all future dates until you override a specific date below. Changes are stored when you press "Save schedule".
+		</p>
+
+		@if (isLoadingSchedule)
+		{
+			<p>Loading schedule...</p>
+		}
+		else
+		{
+			@if (!hasStoredSchedule)
+			{
+				<p class="text-warning">No schedule is defined yet, so customers cannot book this service.</p>
+			}
+
+			<div class="mb-3">
+				<label class="form-label">Days of week</label>
+				<div class="d-flex flex-wrap gap-3">
+					@foreach (var day in OrderedDaysOfWeek)
+					{
+						<div class="form-check">
+							<input id="scheduleDay-@day" type="checkbox" class="form-check-input"
+								checked="@scheduleDays.Contains(day)"
+								@onchange="args => ToggleScheduleDay(day, args)" />
+							<label for="scheduleDay-@day" class="form-check-label">@day</label>
+						</div>
+					}
+				</div>
+			</div>
+
+			<div class="mb-3">
+				<label for="scheduleNewTime" class="form-label">Times (applied to every selected day)</label>
+				<div class="d-flex gap-2 align-items-center">
+					<input id="scheduleNewTime" type="time" class="form-control" style="max-width: 10rem;" @bind="newScheduleTime" />
+					<button type="button" class="btn btn-outline-primary" @onclick="AddScheduleTime" disabled="@isSavingSchedule">Add time</button>
+				</div>
+				@if (scheduleTimes.Count == 0)
+				{
+					<p class="text-muted mt-2 mb-0">No times added yet.</p>
+				}
+				else
+				{
+					<div class="d-flex flex-wrap gap-2 mt-2">
+						@foreach (var time in scheduleTimes)
+						{
+							<span class="badge text-bg-secondary d-flex align-items-center gap-2">
+								@time
+								<button type="button" class="btn-close btn-close-white" aria-label="Remove @time" @onclick="() => RemoveScheduleTime(time)"></button>
+							</span>
+						}
+					</div>
+				}
+			</div>
+
+			<div class="row g-3 mb-3">
+				<div class="col-sm-3">
+					<label for="scheduleDuration" class="form-label">Slot duration (minutes)</label>
+					<input id="scheduleDuration" type="number" min="1" class="form-control" @bind="scheduleDurationMinutes" />
+				</div>
+				<div class="col-sm-3">
+					<label for="scheduleCapacity" class="form-label">Capacity per slot</label>
+					<input id="scheduleCapacity" type="number" min="1" class="form-control" @bind="scheduleCapacity" />
+				</div>
+				<div class="col-sm-3">
+					<label for="scheduleWindow" class="form-label">Booking window (days)</label>
+					<input id="scheduleWindow" type="number" min="1" max="366" class="form-control" @bind="scheduleWindowDays" />
+				</div>
+				<div class="col-sm-3">
+					<label for="scheduleTimeZone" class="form-label">Time zone</label>
+					<input id="scheduleTimeZone" class="form-control" @bind="scheduleTimeZoneId" />
+				</div>
+			</div>
+
+			<h3 class="h5">Date overrides</h3>
+			<p class="form-text">Override the regular weekly times for a single date, or close it completely.</p>
+
+			<div class="row g-3 align-items-end mb-3">
+				<div class="col-sm-3">
+					<label for="overrideDate" class="form-label">Date</label>
+					<input id="overrideDate" type="date" class="form-control" @bind="overrideDate" @bind:after="PrefillOverrideTimes" />
+				</div>
+				<div class="col-sm-2">
+					<div class="form-check mb-2">
+						<input id="overrideClosed" type="checkbox" class="form-check-input" @bind="overrideClosed" />
+						<label for="overrideClosed" class="form-check-label">Closed</label>
+					</div>
+				</div>
+				<div class="col-sm-4">
+					<label for="overrideNewTime" class="form-label">Times for this date</label>
+					<div class="d-flex gap-2">
+						<input id="overrideNewTime" type="time" class="form-control" style="max-width: 10rem;" @bind="newOverrideTime" disabled="@overrideClosed" />
+						<button type="button" class="btn btn-outline-primary" @onclick="AddOverrideTime" disabled="@(overrideClosed || isSavingSchedule)">Add</button>
+					</div>
+				</div>
+				<div class="col-sm-3">
+					<button type="button" class="btn btn-outline-secondary" @onclick="AddOverride" disabled="@isSavingSchedule">Add override</button>
+				</div>
+			</div>
+
+			@if (!overrideClosed && overrideTimes.Count > 0)
+			{
+				<div class="d-flex flex-wrap gap-2 mb-3">
+					@foreach (var time in overrideTimes)
+					{
+						<span class="badge text-bg-info d-flex align-items-center gap-2">
+							@time
+							<button type="button" class="btn-close" aria-label="Remove @time" @onclick="() => RemoveOverrideTime(time)"></button>
+						</span>
+					}
+				</div>
+			}
+
+			@if (scheduleOverrides.Count > 0)
+			{
+				<table class="table table-sm table-striped" style="max-width: 40rem;">
+					<thead>
+						<tr>
+							<th>Date</th>
+							<th>Times</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						@foreach (var (date, scheduleOverride) in scheduleOverrides.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+						{
+							<tr>
+								<td>@date</td>
+								<td>@(scheduleOverride.Closed ? "Closed" : string.Join(", ", scheduleOverride.Times ?? []))</td>
+								<td>
+									<button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveOverride(date)" disabled="@isSavingSchedule">Remove override</button>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+
+			<button class="btn btn-primary" @onclick="SaveSlotScheduleAsync" disabled="@isSavingSchedule">Save schedule</button>
+
+			@if (!string.IsNullOrWhiteSpace(scheduleMessage))
+			{
+				<p class="mt-3 @scheduleMessageClass">@scheduleMessage</p>
+			}
+		}
+	</section>
+}
+
 <section class="mb-5">
 	<div class="d-flex justify-content-between align-items-center mb-3">
 		<h2 class="h4 mb-0">Service Offers</h2>
@@ -255,6 +407,35 @@
 
 	private ServiceOfferDto? lastSavedServiceOffer;
 
+	private static readonly DayOfWeek[] OrderedDaysOfWeek =
+	[
+		DayOfWeek.Monday,
+		DayOfWeek.Tuesday,
+		DayOfWeek.Wednesday,
+		DayOfWeek.Thursday,
+		DayOfWeek.Friday,
+		DayOfWeek.Saturday,
+		DayOfWeek.Sunday
+	];
+
+	private bool isLoadingSchedule;
+	private bool isSavingSchedule;
+	private bool hasStoredSchedule;
+	private string? scheduleMessage;
+	private string scheduleMessageClass = "text-success";
+	private readonly HashSet<DayOfWeek> scheduleDays = [];
+	private readonly List<string> scheduleTimes = [];
+	private TimeOnly? newScheduleTime;
+	private int scheduleDurationMinutes = 60;
+	private int scheduleCapacity = 1;
+	private int scheduleWindowDays = 28;
+	private string scheduleTimeZoneId = "Europe/Prague";
+	private readonly Dictionary<string, SlotScheduleOverrideDto> scheduleOverrides = [];
+	private DateOnly? overrideDate;
+	private bool overrideClosed;
+	private readonly List<string> overrideTimes = [];
+	private TimeOnly? newOverrideTime;
+
 	protected override async Task OnInitializedAsync()
 	{
 		await LoadServiceOffersAsync();
@@ -364,11 +545,16 @@
 				serviceImageUrls.ToArray(),
 				serviceActive);
 
+			var isNewServiceOffer = string.IsNullOrWhiteSpace(selectedServiceOfferId);
 			lastSavedServiceOffer = await AdminApiClient.UpsertServiceOfferAsync(request, CancellationToken.None);
 			if (lastSavedServiceOffer is not null)
 			{
 				selectedServiceOfferId = lastSavedServiceOffer.Id;
 				PopulateServiceOfferForm(lastSavedServiceOffer);
+				if (isNewServiceOffer)
+				{
+					await LoadSlotScheduleAsync();
+				}
 			}
 
 			await LoadServiceOffersAsync();
@@ -544,13 +730,240 @@
 		}
 
 		PopulateServiceOfferForm(selectedServiceOffer);
-		await Task.CompletedTask;
+		await LoadSlotScheduleAsync();
 	}
 
-	private void EditServiceOffer(ServiceOfferDto serviceOffer)
+	private async Task EditServiceOffer(ServiceOfferDto serviceOffer)
 	{
 		selectedServiceOfferId = serviceOffer.Id;
 		PopulateServiceOfferForm(serviceOffer);
+		await LoadSlotScheduleAsync();
+	}
+
+	private async Task LoadSlotScheduleAsync()
+	{
+		ResetScheduleForm();
+		if (string.IsNullOrWhiteSpace(selectedServiceOfferId))
+		{
+			return;
+		}
+
+		isLoadingSchedule = true;
+
+		try
+		{
+			var schedule = await AdminApiClient.GetSlotScheduleAsync(selectedServiceOfferId, CancellationToken.None);
+			if (schedule is not null)
+			{
+				hasStoredSchedule = true;
+				scheduleDays.UnionWith(schedule.DaysOfWeek);
+				scheduleTimes.AddRange(schedule.Times);
+				scheduleDurationMinutes = schedule.SlotDurationMinutes;
+				scheduleCapacity = schedule.Capacity;
+				scheduleWindowDays = schedule.BookingWindowDays;
+				scheduleTimeZoneId = schedule.TimeZoneId;
+				foreach (var (date, scheduleOverride) in schedule.Overrides)
+				{
+					scheduleOverrides[date] = scheduleOverride;
+				}
+			}
+		}
+		catch
+		{
+			scheduleMessageClass = "text-danger";
+			scheduleMessage = "Failed to load the slot schedule.";
+		}
+		finally
+		{
+			isLoadingSchedule = false;
+		}
+	}
+
+	private async Task SaveSlotScheduleAsync()
+	{
+		scheduleMessage = null;
+
+		if (scheduleDays.Count == 0 || scheduleTimes.Count == 0)
+		{
+			scheduleMessageClass = "text-danger";
+			scheduleMessage = "Select at least one day and add at least one time.";
+			return;
+		}
+
+		isSavingSchedule = true;
+
+		try
+		{
+			var saved = await AdminApiClient.UpsertSlotScheduleAsync(
+				new SlotScheduleDto(
+					selectedServiceOfferId,
+					scheduleDays.OrderBy(day => day).ToArray(),
+					scheduleTimes.ToArray(),
+					scheduleDurationMinutes,
+					scheduleCapacity,
+					scheduleWindowDays,
+					scheduleTimeZoneId.Trim(),
+					new Dictionary<string, SlotScheduleOverrideDto>(scheduleOverrides)),
+				CancellationToken.None);
+
+			if (saved is not null)
+			{
+				hasStoredSchedule = true;
+				scheduleDays.Clear();
+				scheduleDays.UnionWith(saved.DaysOfWeek);
+				scheduleTimes.Clear();
+				scheduleTimes.AddRange(saved.Times);
+				scheduleOverrides.Clear();
+				foreach (var (date, scheduleOverride) in saved.Overrides)
+				{
+					scheduleOverrides[date] = scheduleOverride;
+				}
+			}
+
+			scheduleMessageClass = "text-success";
+			scheduleMessage = "Schedule saved.";
+		}
+		catch
+		{
+			scheduleMessageClass = "text-danger";
+			scheduleMessage = "Failed to save the schedule.";
+		}
+		finally
+		{
+			isSavingSchedule = false;
+		}
+	}
+
+	private void ToggleScheduleDay(DayOfWeek day, ChangeEventArgs args)
+	{
+		if (args.Value is bool selected && selected)
+		{
+			scheduleDays.Add(day);
+		}
+		else
+		{
+			scheduleDays.Remove(day);
+		}
+	}
+
+	private void AddScheduleTime()
+	{
+		if (newScheduleTime is { } time)
+		{
+			var normalized = FormatTime(time);
+			if (!scheduleTimes.Contains(normalized, StringComparer.Ordinal))
+			{
+				scheduleTimes.Add(normalized);
+				scheduleTimes.Sort(StringComparer.Ordinal);
+			}
+		}
+
+		newScheduleTime = null;
+	}
+
+	private void RemoveScheduleTime(string time)
+	{
+		scheduleTimes.RemoveAll(candidate => string.Equals(candidate, time, StringComparison.Ordinal));
+	}
+
+	private void PrefillOverrideTimes()
+	{
+		overrideTimes.Clear();
+		if (overrideClosed || overrideDate is not { } date)
+		{
+			return;
+		}
+
+		var dateKey = FormatDate(date);
+		if (scheduleOverrides.TryGetValue(dateKey, out var existingOverride))
+		{
+			overrideClosed = existingOverride.Closed;
+			overrideTimes.AddRange(existingOverride.Times ?? []);
+			return;
+		}
+
+		if (scheduleDays.Contains(date.DayOfWeek))
+		{
+			overrideTimes.AddRange(scheduleTimes);
+		}
+	}
+
+	private void AddOverrideTime()
+	{
+		if (newOverrideTime is { } time)
+		{
+			var normalized = FormatTime(time);
+			if (!overrideTimes.Contains(normalized, StringComparer.Ordinal))
+			{
+				overrideTimes.Add(normalized);
+				overrideTimes.Sort(StringComparer.Ordinal);
+			}
+		}
+
+		newOverrideTime = null;
+	}
+
+	private void RemoveOverrideTime(string time)
+	{
+		overrideTimes.RemoveAll(candidate => string.Equals(candidate, time, StringComparison.Ordinal));
+	}
+
+	private void AddOverride()
+	{
+		scheduleMessage = null;
+
+		if (overrideDate is not { } date)
+		{
+			scheduleMessageClass = "text-danger";
+			scheduleMessage = "Pick a valid override date.";
+			return;
+		}
+
+		var dateKey = FormatDate(date);
+		scheduleOverrides[dateKey] = new SlotScheduleOverrideDto(
+			overrideClosed,
+			overrideClosed ? null : overrideTimes.ToArray());
+
+		overrideDate = null;
+		overrideClosed = false;
+		overrideTimes.Clear();
+		scheduleMessageClass = "text-warning";
+		scheduleMessage = "Override added. Press \"Save schedule\" to store the changes.";
+	}
+
+	private void RemoveOverride(string date)
+	{
+		scheduleOverrides.Remove(date);
+		scheduleMessageClass = "text-warning";
+		scheduleMessage = "Override removed. Press \"Save schedule\" to store the changes.";
+	}
+
+	private void ResetScheduleForm()
+	{
+		hasStoredSchedule = false;
+		scheduleMessage = null;
+		scheduleDays.Clear();
+		scheduleTimes.Clear();
+		newScheduleTime = null;
+		scheduleDurationMinutes = 60;
+		scheduleCapacity = 1;
+		scheduleWindowDays = 28;
+		scheduleTimeZoneId = "Europe/Prague";
+		scheduleOverrides.Clear();
+		overrideDate = null;
+		overrideClosed = false;
+		overrideTimes.Clear();
+		newOverrideTime = null;
+	}
+
+	private static string FormatTime(TimeOnly time)
+	{
+		return time.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+	}
+
+	private static string FormatDate(DateOnly date)
+	{
+		return date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 	}
 
 	private void PopulateServiceOfferForm(ServiceOfferDto serviceOffer)
@@ -573,6 +986,7 @@
 		serviceImageUrls.Clear();
 		serviceActive = true;
 		imageUploadMessage = null;
+		ResetScheduleForm();
 	}
 
 	private void RemoveImage(string imageUrl)

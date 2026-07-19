@@ -62,3 +62,4 @@ src/WorkReservationWeb.Web/wwwroot/**/*.map
 TestResult.xml
 nunit-*.xml
 .fake
+.claude/settings.json

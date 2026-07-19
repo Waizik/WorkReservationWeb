@@ -65,6 +65,8 @@ Admin (requires SWA principal header in this skeleton):
 - GET /api/management/reservations
 - DELETE /api/management/services/{serviceOfferId}
 - POST /api/management/services
+- GET /api/management/services/{serviceOfferId}/schedule
+- POST /api/management/schedules
 
 Admin endpoints now require an `x-ms-client-principal` header containing a valid Azure Static Web Apps client principal with the `admin` role.
 
@@ -87,6 +89,12 @@ The backend now supports two runtime modes:
 - In-memory fallback when Cosmos is not configured.
 
 In Cosmos mode, slots and reservations are stored in a single container using `/partitionKey`, where slot and reservation documents for one service share the same partition. Reservation creation updates the slot and creates the reservation in one transactional batch.
+
+## Availability schedules
+
+Bookable slots are defined by a weekly availability schedule per service offer, managed in the admin UI ("Availability Schedule" section). The admin picks the days of week and a single set of times that applies to every selected day, plus slot duration, capacity, booking window (how many days ahead customers can book), and time zone. The schedule repeats indefinitely; individual dates can be overridden (custom times or closed entirely).
+
+Slots are virtual: they are computed from the schedule on read and only materialize as slot documents when the first reservation is created (in the same transactional batch as the reservation, using the deterministic id `slot_{yyyyMMddHHmm}` in UTC). Changing the schedule never touches existing reservations — slots that no longer match the schedule simply stop being offered. A service offer without a schedule offers no bookable slots.
 
 ## Local development
 
