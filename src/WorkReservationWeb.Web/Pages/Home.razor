@@ -145,7 +145,6 @@ else
 	private string? note;
 
 	private string? captchaSiteKey;
-	private bool captchaWidgetRendered;
 
 	private bool CaptchaEnabled => !string.IsNullOrWhiteSpace(captchaSiteKey);
 
@@ -183,9 +182,11 @@ else
 
 	protected override async Task OnAfterRenderAsync(bool firstRender)
 	{
-		if (CaptchaEnabled && !captchaWidgetRendered && !isLoading && string.IsNullOrWhiteSpace(errorMessage))
+		if (CaptchaEnabled && !isLoading && string.IsNullOrWhiteSpace(errorMessage))
 		{
-			captchaWidgetRendered = await JSRuntime.InvokeAsync<bool>("workReservationCaptcha.render", "captcha-container", captchaSiteKey);
+			// Idempotent: re-creates the widget only when it is missing or dead,
+			// so the captcha recovers after token expiry or a DOM-destroying re-render.
+			await JSRuntime.InvokeAsync<bool>("workReservationCaptcha.render", "captcha-container", captchaSiteKey);
 		}
 	}
 
