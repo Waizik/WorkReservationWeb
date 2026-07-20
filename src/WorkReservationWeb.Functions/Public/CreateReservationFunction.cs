@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using WorkReservationWeb.Functions.Security;
 using WorkReservationWeb.Infrastructure.Notifications;
 using WorkReservationWeb.Infrastructure.Services;
+using WorkReservationWeb.Shared;
 using WorkReservationWeb.Shared.Contracts;
 
 namespace WorkReservationWeb.Functions.Public;
@@ -72,6 +73,23 @@ public sealed class CreateReservationFunction(
                     null),
                 cancellationToken);
             return badRequest;
+        }
+
+        if (!EmailAddressValidator.IsValid(payload.CustomerEmail))
+        {
+            logger?.LogDebug(
+                "Reservation creation validation failed for service offer {ServiceOfferId} because the customer e-mail was not a valid address.",
+                payload.ServiceOfferId);
+            var invalidEmail = request.CreateResponse(System.Net.HttpStatusCode.BadRequest);
+            await invalidEmail.WriteAsJsonAsync(
+                new CreateReservationResultDto(
+                    false,
+                    ReservationCreateOutcome.ValidationFailed,
+                    null,
+                    "Customer e-mail address is not valid.",
+                    null),
+                cancellationToken);
+            return invalidEmail;
         }
 
         if (captchaVerifier is not null)

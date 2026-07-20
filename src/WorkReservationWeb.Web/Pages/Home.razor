@@ -226,6 +226,13 @@ else
 			return;
 		}
 
+		if (!WorkReservationWeb.Shared.EmailAddressValidator.IsValid(customerEmail))
+		{
+			resultClass = "alert-danger";
+			resultMessage = "Please enter a valid e-mail address.";
+			return;
+		}
+
 		var slotToBook = selectedSlot;
 		if (slotToBook is null)
 		{
