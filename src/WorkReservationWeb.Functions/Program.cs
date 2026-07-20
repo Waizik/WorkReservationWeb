@@ -45,6 +45,11 @@ if (int.TryParse(builder.Configuration["RateLimit:ReservationsPerHour"], out var
         new WorkReservationWeb.Functions.Security.FixedWindowRateLimiter(reservationsPerHour, TimeSpan.FromHours(1)));
 }
 
+if (int.TryParse(builder.Configuration["Booking:MaxOpenReservationsPerEmail"], out var maxOpenReservationsPerEmail) && maxOpenReservationsPerEmail > 0)
+{
+    builder.Services.AddSingleton(new WorkReservationWeb.Functions.Security.BookingLimitOptions(maxOpenReservationsPerEmail));
+}
+
 var cosmosConnectionString = builder.Configuration["CosmosDb:ConnectionString"];
 var cosmosDatabaseName = builder.Configuration["CosmosDb:DatabaseName"] ?? "WorkReservationWeb";
 var cosmosContainerName = builder.Configuration["CosmosDb:ContainerName"] ?? "Reservations";

@@ -177,6 +177,11 @@ public class CreateReservationFunctionValidationTests
             throw new NotSupportedException();
         }
 
+        public Task<int> CountOpenReservationsAsync(string customerEmail, DateTimeOffset nowUtc, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
         public string? MarkedConfirmationReservationId { get; private set; }
     }
 

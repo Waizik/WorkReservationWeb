@@ -272,6 +272,29 @@ public sealed class InMemoryReservationPlatformService : IReservationPlatformSer
         }
     }
 
+    public Task<int> CountOpenReservationsAsync(string customerEmail, DateTimeOffset nowUtc, CancellationToken cancellationToken)
+    {
+        var normalizedEmail = customerEmail.Trim();
+        var count = reservations.Values.Count(reservation =>
+            reservation.Status == ReservationStatus.Confirmed &&
+            string.Equals(reservation.CustomerEmail, normalizedEmail, StringComparison.OrdinalIgnoreCase) &&
+            GetSlotStartUtc(reservation) > nowUtc);
+
+        return Task.FromResult(count);
+    }
+
+    private DateTimeOffset GetSlotStartUtc(Reservation reservation)
+    {
+        if (slots.TryGetValue(reservation.SlotId, out var slot))
+        {
+            return slot.StartUtc;
+        }
+
+        return ReservationSlotIdentifier.TryParseStartUtc(reservation.SlotId, out var parsedStartUtc)
+            ? parsedStartUtc
+            : DateTimeOffset.MinValue;
+    }
+
     public Task MarkReservationConfirmationSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)
     {
         if (reservations.TryGetValue(reservationId, out var reservation))

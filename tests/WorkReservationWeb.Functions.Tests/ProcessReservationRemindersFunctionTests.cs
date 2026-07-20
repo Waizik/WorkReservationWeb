@@ -131,6 +131,7 @@ public sealed class ProcessReservationRemindersFunctionTests
         public Task<SlotScheduleDto?> GetSlotScheduleAsync(string serviceOfferId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SlotScheduleDto> UpsertSlotScheduleAsync(SlotScheduleDto schedule, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<CancelReservationResultDto> CancelReservationAsync(string reservationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<int> CountOpenReservationsAsync(string customerEmail, DateTimeOffset nowUtc, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public string? MarkedReminderReservationId { get; private set; }
     }

@@ -13,6 +13,7 @@ public sealed class CreateReservationFunction(
     IReservationNotificationService notificationService,
     ICaptchaVerifier? captchaVerifier = null,
     IReservationRateLimiter? rateLimiter = null,
+    BookingLimitOptions? bookingLimits = null,
     ILogger<CreateReservationFunction>? logger = null)
 {
     private const string CaptchaTokenHeader = "x-captcha-token";
@@ -94,6 +95,31 @@ public sealed class CreateReservationFunction(
                         null),
                     cancellationToken);
                 return captchaFailed;
+            }
+        }
+
+        if (bookingLimits is not null)
+        {
+            var openReservationCount = await reservationPlatformService.CountOpenReservationsAsync(
+                payload.CustomerEmail,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+
+            if (openReservationCount >= bookingLimits.MaxOpenReservationsPerEmail)
+            {
+                logger?.LogWarning(
+                    "Reservation creation rejected because the open reservation limit ({Limit}) was reached for the customer e-mail.",
+                    bookingLimits.MaxOpenReservationsPerEmail);
+                var limitReached = request.CreateResponse(System.Net.HttpStatusCode.BadRequest);
+                await limitReached.WriteAsJsonAsync(
+                    new CreateReservationResultDto(
+                        false,
+                        ReservationCreateOutcome.ValidationFailed,
+                        null,
+                        "You already have the maximum number of upcoming reservations for this e-mail address.",
+                        null),
+                    cancellationToken);
+                return limitReached;
             }
         }
 

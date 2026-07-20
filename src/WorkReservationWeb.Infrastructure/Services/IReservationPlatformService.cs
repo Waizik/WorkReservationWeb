@@ -20,6 +20,8 @@ public interface IReservationPlatformService
 
     Task<CancelReservationResultDto> CancelReservationAsync(string reservationId, CancellationToken cancellationToken);
 
+    Task<int> CountOpenReservationsAsync(string customerEmail, DateTimeOffset nowUtc, CancellationToken cancellationToken);
+
     Task MarkReservationConfirmationSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ReservationNotificationContextDto>> GetReservationsDueForReminderAsync(DateTimeOffset reminderWindowEndUtc, CancellationToken cancellationToken);

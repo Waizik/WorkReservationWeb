@@ -501,6 +501,29 @@ public sealed class CosmosReservationPlatformService : IReservationPlatformServi
                 reservation.ReminderSentAtUtc));
     }
 
+    public async Task<int> CountOpenReservationsAsync(string customerEmail, DateTimeOffset nowUtc, CancellationToken cancellationToken)
+    {
+        var currentContainer = await GetContainerAsync(cancellationToken);
+
+        // Slot ids are "slot_yyyyMMddHHmm" (UTC), so a lexicographic comparison selects future slots.
+        var query = new QueryDefinition(
+            "SELECT VALUE COUNT(1) FROM c WHERE c.Type = @type AND c.Status = @status AND LOWER(c.CustomerEmail) = @email AND c.SlotId > @minSlotId")
+            .WithParameter("@type", CosmosDocumentTypes.Reservation)
+            .WithParameter("@status", ReservationStatus.Confirmed.ToString())
+            .WithParameter("@email", customerEmail.Trim().ToLowerInvariant())
+            .WithParameter("@minSlotId", ReservationSlotIdentifier.Create(nowUtc));
+
+        var iterator = currentContainer.GetItemQueryIterator<int>(query);
+        var count = 0;
+        while (iterator.HasMoreResults)
+        {
+            var page = await iterator.ReadNextAsync(cancellationToken);
+            count += page.FirstOrDefault();
+        }
+
+        return count;
+    }
+
     public async Task MarkReservationConfirmationSentAsync(string reservationId, DateTimeOffset sentAtUtc, CancellationToken cancellationToken)
     {
         var currentContainer = await GetContainerAsync(cancellationToken);

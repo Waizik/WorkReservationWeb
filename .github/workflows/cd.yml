@@ -29,6 +29,7 @@ jobs:
       COMMUNICATION_SERVICES_SENDER_ADDRESS: ${{ vars.COMMUNICATION_SERVICES_SENDER_ADDRESS }}
       CAPTCHA_SECRET_KEY: ${{ secrets.CAPTCHA_SECRET_KEY }}
       RATE_LIMIT_RESERVATIONS_PER_HOUR: ${{ vars.RATE_LIMIT_RESERVATIONS_PER_HOUR || '3' }}
+      MAX_OPEN_RESERVATIONS_PER_EMAIL: ${{ vars.MAX_OPEN_RESERVATIONS_PER_EMAIL || '3' }}
       RESERVATION_REMINDER_SCHEDULE: ${{ vars.RESERVATION_REMINDER_SCHEDULE || '0 0 0 * * *' }}
       WEB_PUBLISH_DIR: artifacts/web
       API_PUBLISH_DIR: artifacts/api
@@ -153,6 +154,7 @@ jobs:
               "CommunicationServices__SenderAddress=$COMMUNICATION_SERVICES_SENDER_ADDRESS" \
               "Captcha__SecretKey=$CAPTCHA_SECRET_KEY" \
               "RateLimit__ReservationsPerHour=$RATE_LIMIT_RESERVATIONS_PER_HOUR" \
+              "Booking__MaxOpenReservationsPerEmail=$MAX_OPEN_RESERVATIONS_PER_EMAIL" \
             --output none
 
           echo "::add-mask::$static_web_app_token"
