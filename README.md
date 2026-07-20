@@ -101,6 +101,8 @@ The public booking endpoint can be protected by a [Cloudflare Turnstile](https:/
 When enabled, the booking form renders the Turnstile widget and `POST /api/public/reservations` rejects requests without a valid `x-captcha-token` header. When the keys are empty (local development, tests), the captcha is skipped entirely.
 Configured in https://dash.cloudflare.com/f13e100c64914e6f7e77c5ac694e696d/turnstile/add - used github account.
 
+The booking endpoint is additionally rate limited per client IP (`x-forwarded-for`). The limit comes from the `RateLimit__ReservationsPerHour` app setting; the CD pipeline sets it from the GitHub variable `RATE_LIMIT_RESERVATIONS_PER_HOUR` (default 10 bookings per hour per IP). Requests over the limit get HTTP 429 before any captcha, database, or e-mail work happens. An empty value disables the limiter (local development, tests). Counters are in-memory per Functions instance — they reset on restart and are not shared across scaled-out instances, which is an accepted trade-off for a free, dependency-less setup.
+
 ## Availability schedules
 
 Bookable slots are defined by a weekly availability schedule per service offer, managed in the admin UI ("Availability Schedule" section). The admin picks the days of week and a single set of times that applies to every selected day, plus slot duration, capacity, booking window (how many days ahead customers can book), and time zone. The schedule repeats indefinitely; individual dates can be overridden (custom times or closed entirely).
@@ -316,3 +318,7 @@ az staticwebapp show `
 ```
 
 The Bicep template sets the Static Web Apps SKU to `Free`. In the Azure portal, the same value appears on the Static Web App resource under its hosting plan or SKU details. The reminder Function App is a separate Azure resource, so it has its own Consumption-plan billing independent of the Static Web Apps Free SKU.
+
+## TODO
+1, Rate limiter per IP (např. 5 rezervací/hod z jedné IP, počítáno v paměti funkce podle x-forwarded-for)	rychlý flood z jednoho zdroje, i ruční	distribuovaný útok z mnoha IP, sdílené IP (NAT) penalizuje nevinné
+2, Byznysová pravidla (max. N budoucích rezervací na jeden e-mail, jedna rezervace na slot a e-mail)

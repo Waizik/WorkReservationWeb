@@ -21,6 +21,7 @@
     <PackageVersion Include="Microsoft.Playwright" Version="1.53.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="NCrontab.Signed" Version="3.3.0" />
+    <PackageVersion Include="System.Threading.RateLimiting" Version="9.0.0" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />

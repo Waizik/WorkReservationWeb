@@ -12,6 +12,7 @@ public sealed class CreateReservationFunction(
     IReservationPlatformService reservationPlatformService,
     IReservationNotificationService notificationService,
     ICaptchaVerifier? captchaVerifier = null,
+    IReservationRateLimiter? rateLimiter = null,
     ILogger<CreateReservationFunction>? logger = null)
 {
     private const string CaptchaTokenHeader = "x-captcha-token";
@@ -21,6 +22,25 @@ public sealed class CreateReservationFunction(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "public/reservations")] HttpRequestData request,
         CancellationToken cancellationToken)
     {
+        if (rateLimiter is not null)
+        {
+            var clientIp = ClientIpResolver.Resolve(request);
+            if (!rateLimiter.TryAcquire(clientIp))
+            {
+                logger?.LogWarning("Reservation creation rejected because the rate limit was exceeded for client {ClientIp}.", clientIp);
+                var tooManyRequests = request.CreateResponse(System.Net.HttpStatusCode.TooManyRequests);
+                await tooManyRequests.WriteAsJsonAsync(
+                    new CreateReservationResultDto(
+                        false,
+                        ReservationCreateOutcome.ValidationFailed,
+                        null,
+                        "Too many booking attempts. Please try again later.",
+                        null),
+                    cancellationToken);
+                return tooManyRequests;
+            }
+        }
+
         var payload = await request.ReadFromJsonAsync<CreateReservationRequestDto>(cancellationToken);
         if (payload is null)
         {

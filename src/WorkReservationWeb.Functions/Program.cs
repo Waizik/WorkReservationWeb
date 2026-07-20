@@ -39,6 +39,12 @@ if (!string.IsNullOrWhiteSpace(captchaSecretKey))
         new WorkReservationWeb.Functions.Security.TurnstileCaptchaVerifier(new HttpClient(), captchaSecretKey));
 }
 
+if (int.TryParse(builder.Configuration["RateLimit:ReservationsPerHour"], out var reservationsPerHour) && reservationsPerHour > 0)
+{
+    builder.Services.AddSingleton<WorkReservationWeb.Functions.Security.IReservationRateLimiter>(
+        new WorkReservationWeb.Functions.Security.FixedWindowRateLimiter(reservationsPerHour, TimeSpan.FromHours(1)));
+}
+
 var cosmosConnectionString = builder.Configuration["CosmosDb:ConnectionString"];
 var cosmosDatabaseName = builder.Configuration["CosmosDb:DatabaseName"] ?? "WorkReservationWeb";
 var cosmosContainerName = builder.Configuration["CosmosDb:ContainerName"] ?? "Reservations";
